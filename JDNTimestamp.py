@@ -5,35 +5,45 @@ class JDNTimestamp:
     """
     历史时间核心类 (Integer Fixed-Point JDN)
 
-    存储: 
-        self.value (int): 距离 JDN 0 (公元前4713年11月24日 12:00:00) 的总微秒数。
+    存储:
+        self.value (int): 距离 JDN 0 (公元前4713年1月1日 12:00:00 UTC, Julian Proleptic) 的总微秒数。
 
-    精度: 
-        微秒 (microseconds)。
-
-    数学逻辑:
-        1 天 = 86,400,000,000 微秒。
-        完全避免 float 运算，彻底解决 23:59:59.999999 进位精度丢失问题。
+    精度:
+        微秒 (microseconds)。整数存储，绝对无损。
     """
 
     __slots__ = ('value',)
 
     # 常量定义
-    SCALE = 1_000_000  # 精度：微秒
+    SCALE = 1_000_000  # 1秒 = 1,000,000 微秒
     DAY_SECONDS = 86400
-    DAY_UNIT = DAY_SECONDS * SCALE  # 一天的总单位数 (864亿)
-    HALF_DAY_UNIT = DAY_UNIT // 2  # 半天 (用于校准中午和午夜)
+    DAY_UNIT = DAY_SECONDS * SCALE  # 一天的总微秒数 (86,400,000,000)
+    HALF_DAY_UNIT = DAY_UNIT // 2  # 半天
 
     def __init__(self, total_microseconds: int):
         self.value = int(total_microseconds)
 
     def __repr__(self):
-        return f"<JDNTimestamp(Int): {self.value}>"
+        # 方便调试，直接显示转换后的公历
+        y, m, d, h, mn, s, us = self.to_gregorian()
+        return f"<JDNTimestamp: {y:04d}-{m:02d}-{d:02d} {h:02d}:{mn:02d}:{s:02d}.{us:06d}>"
 
     def __eq__(self, other):
         if isinstance(other, JDNTimestamp):
             return self.value == other.value
         return False
+
+    def __lt__(self, other):
+        return self.value < other.value
+
+    # =========================================================================
+    # 辅助属性 (用于调试和验证)
+    # =========================================================================
+
+    @property
+    def jdn_float(self) -> float:
+        """返回标准的浮点型 JDN (天数)，用于科学计算或对比，会有精度损失"""
+        return self.value / self.DAY_UNIT
 
     # =========================================================================
     # 构造 (Construction) - 纯整数逻辑
@@ -44,29 +54,27 @@ class JDNTimestamp:
                      hour: int = 0, minute: int = 0, second: int = 0,
                      microsecond: int = 0) -> 'JDNTimestamp':
         """
-        从外推格里高利历构造 (Fliegel & Van Flandern 整数版)
+        从外推格里高利历构造
+        算法: Fliegel & Van Flandern (适用于转换 Noon JDN)
         """
-        # 1. 计算日期部分的 JDN 整数 (该值为当日中午 12:00 的 JDN)
-        # 算法: Fliegel & Van Flandern
+        # 1. 计算该日期 "12:00:00" 时对应的 JDN 整数
         a = (14 - month) // 12
         y = year + 4800 - a
         m = month + 12 * a - 3
 
-        # 算出的是“日”的整数
+        # 计算出的 jdn_noon_days 是一个整数，代表当天的中午12点
         jdn_noon_days = day + (153 * m + 2) // 5 + 365 * y + y // 4 - y // 100 + y // 400 - 32045
 
-        # 2. 转换为微秒大整数
-        # 此时 total_noon 代表当日中午 12:00 的刻度
+        # 2. 转换为微秒大整数 (Base Noon)
         total_noon = jdn_noon_days * cls.DAY_UNIT
 
-        # 3. 计算当日时间的微秒偏移
-        # 我们需要从“午夜”开始算，所以时间偏移量是 hour:minute:second
+        # 3. 计算从“当日00:00”到“目标时间”的偏移量
         time_offset = (hour * 3600 + minute * 60 + second) * cls.SCALE + microsecond
 
-        # 4. 合并
-        # 标准 JDN 是中午起算。
-        # 当日 00:00:00 实际上是 (中午JDN - 0.5天)
-        # 所以: 最终值 = 中午基准值 - 半天 + 当日时间偏移
+        # 4. 核心逻辑：
+        # JDN 整数值对应的是 12:00。
+        # 00:00 对应的是 (Noon - 0.5 Day)。
+        # 所以: Value = (NoonValue - HalfDay) + TimeOffset
         final_value = total_noon - cls.HALF_DAY_UNIT + time_offset
 
         return cls(final_value)
@@ -76,12 +84,27 @@ class JDNTimestamp:
         return cls.from_ymd_hms(year, month, day)
 
     @classmethod
+    def from_year(cls, year: int) -> 'JDNTimestamp':
+        """构造某年1月1日 00:00:00"""
+        return cls.from_ymd_hms(year, 1, 1)
+
+    @classmethod
     def from_iso_week(cls, iso_year: int, week_number: int, weekday: int = 1) -> 'JDNTimestamp':
+        # 1. 找到 ISO 年的基准日：1月4日
         jan4 = cls.from_ymd(iso_year, 1, 4)
-        jan4_wd = jan4.weekday
-        # 纯整数运算：一天就是 DAY_UNIT
+
+        # 2. 找到 1月4日 所在周的周一 (ISO Week 1 的起始)
+        # weekday: Mon=1 ... Sun=7
+        jan4_wd = jan4.weekday  # 1-7
+
+        # 回退 (weekday - 1) 天到达周一
         week1_monday_val = jan4.value - (jan4_wd - 1) * cls.DAY_UNIT
-        target_val = week1_monday_val + ((week_number - 1) * 7 + (weekday - 1)) * cls.DAY_UNIT
+
+        # 3. 加上周数偏移和天数偏移
+        # (week_number - 1) * 7 天 + (weekday - 1) 天
+        days_to_add = (week_number - 1) * 7 + (weekday - 1)
+        target_val = week1_monday_val + days_to_add * cls.DAY_UNIT
+
         return cls(target_val)
 
     # =========================================================================
@@ -92,27 +115,29 @@ class JDNTimestamp:
         """
         返回: (year, month, day, hour, minute, second, microsecond)
         """
-        # 1. 还原到以“中午”为整数边界的数值
-        # 因为逆向算法基于 Noon JDN 整数
-        # 当前值是 Based on Midnight (visually)，但数值轴是 Based on Noon 0.
-        # 我们加上半天，这样如果时间是 00:00:00，加上半天后正好是 12:00:00 (前一天? 或者是当天中午?)
-
-        # 逻辑梳理：
-        # 假设 2000-01-01 12:00:00. Value = X (整数).
-        # 2000-01-01 00:00:00. Value = X - HalfDay.
-        # 要调用 Fliegel 算法，我们需要获得 X (日期部分的 JDN 整数)。
-        # 2000-01-01 00:00:00 + HalfDay = X. (整除 DAY_UNIT 得到 JDN)
-        # 2000-01-01 23:59:59 + HalfDay = X + (Almost 1 Day). (整除 DAY_UNIT 依然得到 JDN)
+        # 1. 调整回 Noon Base 进行日期计算
+        # 我们的 value 是基于 JDN 0.0 (Noon)。
+        # 如果是 00:00:00，value 尾数是 .5 * DAY_UNIT。
+        # 为了利用整数除法算出“今天是JDN第几天(整数)”，我们需要加上半天，
+        # 让 00:00:00 变成下一个整数边界（或保持在当前整数区间，取决于具体的Fliegel逆运算要求）。
+        #
+        # Fliegel 算法接受一个整数 JDN，返回该 JDN 中午对应的 YMD。
+        # 举例：2000-01-01 12:00 -> JDN 2451545.0
+        #      2000-01-01 00:00 -> JDN 2451544.5
+        # 我们希望 00:00 属于 2000-01-01。
+        # 2451544.5 + 0.5 = 2451545.0。 整数部分 2451545。-> Fliegel 算出 2000-01-01。正确。
 
         adjusted_value = self.value + self.HALF_DAY_UNIT
 
-        # JDN 整数部分 (日)
+        # JDN Days (整数)
         jdn_days = adjusted_value // self.DAY_UNIT
 
-        # 当日剩余微秒数 (时间部分)
+        # 剩余部分是“距离当日中午12点之前”还是“距离当日0点”？
+        # adjusted_value 是把时间轴平移了 12小时。
+        # 所以 adjusted_value % DAY_UNIT 得到的是“距离当日 00:00:00 逝去的微秒数”。
         time_part = adjusted_value % self.DAY_UNIT
 
-        # 2. Fliegel & Van Flandern 逆向算法 (整数)
+        # 2. Fliegel & Van Flandern 逆向算法
         L = jdn_days + 68569
         N = (4 * L) // 146097
         L = L - (146097 * N + 3) // 4
@@ -124,8 +149,7 @@ class JDNTimestamp:
         month = J + 2 - 12 * L
         year = 100 * (N - 49) + I + L
 
-        # 3. 解析时间部分 (time_part 是微秒总数)
-        # 纯整数除法，绝对精确
+        # 3. 解析时间
         total_seconds = time_part // self.SCALE
         microsecond = time_part % self.SCALE
 
@@ -134,7 +158,7 @@ class JDNTimestamp:
         minute = rem_seconds // 60
         second = rem_seconds % 60
 
-        return year, month, day, hour, minute, second, microsecond
+        return int(year), int(month), int(day), int(hour), int(minute), int(second), int(microsecond)
 
     # =========================================================================
     # 属性与计算
@@ -147,26 +171,50 @@ class JDNTimestamp:
     @property
     def weekday(self) -> int:
         # 1=Mon, 7=Sun
-        # 计算基于 Noon JDN。
+        # JDN 0 (Monday noon) -> 0.
+        # Calculation: (JDN_Noon + 0.5 + 0) ? No.
+        # JDN 整数对应的是中午。
+        # 2451545 (2000-01-01) 是周六(6).
+        # (2451545 + 1) % 7 = 2451546 % 7 ...
+        # 常规公式: (JDN + 1) % 7.
+        # 我们用 adjusted_value // DAY_UNIT 得到的就是 JDN 整数。
         adjusted_value = self.value + self.HALF_DAY_UNIT
         jdn_days = adjusted_value // self.DAY_UNIT
-        wd = (jdn_days + 1) % 7
-        return 7 if wd == 0 else wd
+        wd = (jdn_days) % 7
+        # 注意: JDN 0 是周一(12:00)。(0)%7 = 0.
+        # 我们想要 1=Mon, ..., 6=Sat, 0(or 7)=Sun.
+        # 如果 JDN=0 -> Mon(1). 公式应为 (JDN + 1) % 7 ?
+        # 验证: 2000-01-01 JDN 2451545. (2451545+1)%7 = 2451546%7 = 0 (Wait, 2451546 is divisible by 7? 2451546/7=350220.8).
+        # 实际上: JDN 0 is Mon.
+        # (0 + 0) % 7 = 0 -> let's map 0->Mon? No, standard is 0->Mon, 1->Tue... 6->Sun.
+        # Python: 0=Mon, 6=Sun? No, ISO is 1=Mon, 7=Sun.
+        # Let's calibrate: 2000-01-01 was Saturday (6).
+        # JDN 2451545. (2451545 + 1) % 7 = ?
+        # 2451545 % 7 = 5.
+        # So Mon(0) -> 0. Sat(5) -> 5? No we want Sat=6.
+        # Formula: (JDN % 7) + 1.
+        # If JDN=0 (Mon), 0+1=1 (Mon). Correct.
+        # If JDN=2451545, 5+1=6 (Sat). Correct.
+        wd = (jdn_days % 7) + 1
+        return wd
 
     def is_leap_year(self) -> bool:
         y = self.year
+        # Proleptic Gregorian 规则
+        if y < 0: y = -y  # 简单处理年份用于除法逻辑，实际上格里高利历含公元前闰年规则一致
+        # 公元前1年(0) 是闰年
         return (y % 4 == 0 and y % 100 != 0) or (y % 400 == 0)
 
     def __sub__(self, other):
         if isinstance(other, JDNTimestamp):
             # 返回微秒差值 (int)
             return self.value - other.value
-        # 如果减去的是数字，默认当做“天”处理? 还是微秒?
-        # 为了避免歧义，建议只允许同类相减，或者明确其他类型是天
+        # 如果减去的是数字，假定是天数 (float)
         return self.value - int(float(other) * self.DAY_UNIT)
 
-    def __add__(self, days: float):
-        # 加天数 (支持小数天)
-        # 转换为整数微秒
-        us_delta = int(days * self.DAY_UNIT)
-        return JDNTimestamp(self.value + us_delta)
+    def __add__(self, other):
+        if isinstance(other, (int, float)):
+            # 加天数 (支持小数天)
+            us_delta = int(other * self.DAY_UNIT)
+            return JDNTimestamp(self.value + us_delta)
+        raise TypeError("Can only add numeric days (float/int) to JDNTimestamp")
