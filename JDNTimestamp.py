@@ -169,6 +169,30 @@ class JDNTimestamp:
         return self.to_gregorian()[0]
 
     @property
+    def month(self) -> int:
+        return self.to_gregorian()[1]
+
+    @property
+    def day(self) -> int:
+        return self.to_gregorian()[2]
+
+    @property
+    def hour(self) -> int:
+        return self.to_gregorian()[3]
+
+    @property
+    def minute(self) -> int:
+        return self.to_gregorian()[4]
+
+    @property
+    def second(self) -> int:
+        return self.to_gregorian()[5]
+
+    @property
+    def microsecond(self) -> int:
+        return self.to_gregorian()[6]
+
+    @property
     def weekday(self) -> int:
         # 1=Mon, 7=Sun
         # JDN 0 (Monday noon) -> 0.

@@ -6,7 +6,7 @@ class LunarDateBridge:
     class LunarResult:
         def __init__(self, lunar_obj: Lunar):
             self.year = lunar_obj.getYear()
-            self.month = lunar_obj.getMonth()
+            self.month = abs(lunar_obj.getMonth())
             self.day = lunar_obj.getDay()
             # 闰月判断：lunar_python 某些版本 getMonth() 在闰月时可能返回负数或相同数，
             # 最可靠的是通过 getMonthInChinese 判断是否包含“闰”字，或使用库特定API
