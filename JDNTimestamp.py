@@ -1,6 +1,8 @@
 from typing import Tuple, Union
+from functools import total_ordering
 
 
+@total_ordering
 class JDNTimestamp:
     """
     历史时间核心类 (Integer Fixed-Point JDN)
@@ -229,12 +231,24 @@ class JDNTimestamp:
         # 公元前1年(0) 是闰年
         return (y % 4 == 0 and y % 100 != 0) or (y % 400 == 0)
 
-    def __sub__(self, other):
+    # =========================================================================
+    # 1. 比较运算符 (Rich Comparison) - 解决 '>=' not supported 报错
+    # =========================================================================
+
+    def __eq__(self, other):
         if isinstance(other, JDNTimestamp):
-            # 返回微秒差值 (int)
-            return self.value - other.value
-        # 如果减去的是数字，假定是天数 (float)
-        return self.value - int(float(other) * self.DAY_UNIT)
+            return self.value == other.value
+        return False
+
+    def __lt__(self, other):
+        if isinstance(other, JDNTimestamp):
+            return self.value < other.value
+        return NotImplemented
+
+    # 由于使用了 @total_ordering，__le__, __gt__, __ge__ 会自动生成
+
+    def __hash__(self):
+        return hash(self.value)
 
     def __add__(self, other):
         if isinstance(other, (int, float)):
@@ -242,3 +256,15 @@ class JDNTimestamp:
             us_delta = int(other * self.DAY_UNIT)
             return JDNTimestamp(self.value + us_delta)
         raise TypeError("Can only add numeric days (float/int) to JDNTimestamp")
+
+    def __sub__(self, other):
+        if isinstance(other, JDNTimestamp):
+            # 返回微秒差值 (int)
+            return self.value - other.value
+
+        if isinstance(other, (int, float)):
+            # 减去天数
+            offset_us = int(other * self.DAY_UNIT)
+            return JDNTimestamp(self.value - offset_us)
+
+        return NotImplemented
