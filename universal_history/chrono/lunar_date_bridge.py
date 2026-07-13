@@ -1,5 +1,5 @@
 from lunar_python import Lunar, Solar
-from JDNTimestamp import JDNTimestamp
+from universal_history.chrono.jdn_timestamp import JDNTimestamp
 
 
 class LunarDateBridge:

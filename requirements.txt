@@ -1,1 +1,2 @@
-lunar_python
+PyQt6>=6.0,<7.0
+lunar_python>=1.0

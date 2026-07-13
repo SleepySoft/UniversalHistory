@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Literal
 import math
 
-from JDNTimestamp import JDNTimestamp
+from universal_history.chrono.jdn_timestamp import JDNTimestamp
 
 # 定义刻度类型的枚举/常量
 StepUnit = Literal['Day', 'Month', 'Year']

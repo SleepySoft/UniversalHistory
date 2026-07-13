@@ -1,6 +1,6 @@
 import datetime
 from datetime import timezone
-from JDNTimestamp import JDNTimestamp
+from universal_history.chrono.jdn_timestamp import JDNTimestamp
 
 
 class PythonTimeBridge:

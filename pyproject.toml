@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "universal-history"
+version = "0.1.0"
+description = "A proleptic-Gregorian, JDN-based historical timeline application."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "PyQt6>=6.0,<7.0",
+    "lunar_python>=1.0",
+]
+
+[project.scripts]
+universal-history = "universal_history.main_window:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["universal_history*"]

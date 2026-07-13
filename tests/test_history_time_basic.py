@@ -3,9 +3,9 @@ import datetime
 from datetime import timezone
 
 # 假设这三个类都在同一个包或当前目录下
-from JDNTimestamp import JDNTimestamp
-from LunarDateBridge import LunarDateBridge
-from PythonTimeBridge import PythonTimeBridge
+from universal_history.chrono.jdn_timestamp import JDNTimestamp
+from universal_history.chrono.lunar_date_bridge import LunarDateBridge
+from universal_history.chrono.python_time_bridge import PythonTimeBridge
 
 
 class TestJDNTimestamp(unittest.TestCase):
