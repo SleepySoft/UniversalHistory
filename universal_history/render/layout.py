@@ -81,6 +81,7 @@ class ThreadLayout:
         self,
         align: str = "right",
         min_track_width: float = MIN_TRACK_WIDTH,
+        share: float = 1.0,
         track_color: QColor = None,
         item_color: QColor = None,
         source: str = "",
@@ -90,6 +91,7 @@ class ThreadLayout:
         self.align = align
         self.source = source
         self.min_track_width = min_track_width
+        self.share = max(0.0, min(1.0, float(share)))
         self.track_color = track_color or QColor(240, 240, 240)
         self.item_color = item_color or QColor(185, 227, 217)
         self.events: List[EventIndex] = []
@@ -101,6 +103,14 @@ class ThreadLayout:
     def set_events(self, events: List[EventIndex]) -> None:
         self.events = list(events)
         self.items.clear()
+
+    def set_min_track_width(self, width: float) -> None:
+        """Set the minimum track width for this thread."""
+        self.min_track_width = max(1.0, float(width))
+
+    def set_share(self, share: float) -> None:
+        """Set this thread's share (0.0~1.0) of its side's total space."""
+        self.share = max(0.0, min(1.0, float(share)))
 
     def arrange(
         self,

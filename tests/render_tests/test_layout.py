@@ -75,6 +75,34 @@ class TestThreadLayout(unittest.TestCase):
         tracks = {item.y0 for item in thread.items}
         self.assertGreaterEqual(len(tracks), 2)
 
+    def test_min_track_width_affects_track_count(self):
+        coord = CoordinateSystem()
+        coord.set_widget_size(800, 600)
+
+        # Three overlapping period events that need separate tracks.
+        events = [
+            _index((2000, 1, 1), (2000, 6, 1), "A"),
+            _index((2000, 3, 1), (2000, 9, 1), "B"),
+            _index((2000, 5, 1), (2000, 12, 1), "C"),
+        ]
+
+        narrow = ThreadLayout(align="right", min_track_width=20)
+        narrow.set_events(events)
+        narrow.arrange(coord, (20, 300))
+
+        wide = ThreadLayout(align="right", min_track_width=200)
+        wide.set_events(events)
+        wide.arrange(coord, (20, 300))
+
+        self.assertGreater(len(narrow.tracks), len(wide.tracks))
+
+    def test_set_min_track_width_updates_value(self):
+        thread = ThreadLayout(align="right", min_track_width=50)
+        thread.set_min_track_width(120)
+        self.assertEqual(thread.min_track_width, 120)
+        thread.set_min_track_width(-10)
+        self.assertEqual(thread.min_track_width, 1.0)
+
 
 if __name__ == "__main__":
     unittest.main()

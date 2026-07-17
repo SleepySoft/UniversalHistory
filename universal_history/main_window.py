@@ -18,17 +18,23 @@ if __name__ == "__main__":
     if str(_project_root) not in sys.path:
         sys.path.insert(0, str(_project_root))
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QPointF, Qt
 from PyQt6.QtGui import QAction, QColor, QKeySequence
 from PyQt6.QtWidgets import (
-    QApplication, QFileDialog, QMainWindow, QMenu, QMessageBox, QVBoxLayout,
-    QWidget,
+    QApplication, QDialog, QFileDialog, QInputDialog, QMainWindow, QMenu,
+    QMessageBox, QVBoxLayout, QWidget,
 )
 
 from universal_history.adapters import HisFileAdapter
 from universal_history.models import Workspace
 from universal_history.render import TimelineView
-from universal_history.ui import EventEditorDialog, FilterDialog
+from universal_history.ui import (
+    AddThreadDialog,
+    BindSourceDialog,
+    EventEditorDialog,
+    FilterDialog,
+    ThreadManagerDialog,
+)
 
 
 class MainWindow(QMainWindow):
@@ -94,48 +100,49 @@ class MainWindow(QMainWindow):
         toggle_action.triggered.connect(self._view.toggle_orientation)
         view_menu.addAction(toggle_action)
 
+        thread_mgr_action = QAction("Thread Manager...", self)
+        thread_mgr_action.setShortcut("Ctrl+M")
+        thread_mgr_action.triggered.connect(self._on_open_thread_manager)
+        view_menu.addAction(thread_mgr_action)
+
     def _load_file(self, path: str):
         try:
             events = self._adapter.load_file(path)
             self._workspace.load_events(events)
             source = events[0].source if events else path
-            self._view.load_source(
-                source,
-                align="right",
-                track_color=QColor(230, 230, 230),
-                item_color=QColor(185, 227, 217),
-            )
+            self._view.load_source(source, align="right")
             self._view.show_events_at_default_scale([source])
         except Exception as e:
             QMessageBox.critical(self, "Load Failed", str(e))
 
-    def _add_file_as_thread(self, align: str = "left"):
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Open History File",
-            str(self._adapter.depot_root),
-            "History Files (*.his)",
-        )
-        if not path:
+    def _on_add_thread(self, align: str = "right"):
+        dlg = AddThreadDialog(self._adapter, side=align, parent=self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
             return
-        try:
-            events = self._adapter.load_file(path)
+        source, events = dlg.get_result()
+        if events:
             self._workspace.load_events(events)
-            source = events[0].source if events else path
-            if align == "left":
-                track_color = QColor(220, 230, 240)
-                item_color = QColor(200, 210, 240)
-            else:
-                track_color = QColor(230, 230, 230)
-                item_color = QColor(185, 227, 217)
-            self._view.load_source(
-                source,
-                align=align,
-                track_color=track_color,
-                item_color=item_color,
-            )
-        except Exception as e:
-            QMessageBox.critical(self, "Load Failed", str(e))
+        indexes = [e.to_index() for e in events]
+        thread = self._view.add_thread(indexes, align=align, source=source)
+        # If we created a new empty source, immediately open the editor so the
+        # user can add the first record seamlessly.
+        if not indexes and source:
+            self._open_editor(source)
+
+    def _on_new_event_for_thread(self, thread):
+        """Open the editor for a thread, binding a source first if needed."""
+        if thread.source:
+            self._open_editor(thread.source)
+            return
+        dlg = BindSourceDialog(self._adapter, parent=self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        source, events = dlg.get_result()
+        if events:
+            self._workspace.load_events(events)
+        thread.source = source
+        self._view.set_thread_events(thread, [e.to_index() for e in events])
+        self._open_editor(source)
 
     def _on_open_file(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -164,13 +171,44 @@ class MainWindow(QMainWindow):
     def _on_timeline_context_menu(self, global_pos, index):
         menu = QMenu(self)
 
-        load_left_action = QAction("Load file into left thread", self)
-        load_left_action.triggered.connect(lambda: self._add_file_as_thread("left"))
-        menu.addAction(load_left_action)
+        local_pos = self._view.mapFromGlobal(global_pos)
+        local_f = QPointF(local_pos)
+        thread = self._view.thread_at_screen(local_f)
+        side = thread.align if thread is not None else self._view.side_at_screen(local_f)
 
-        load_right_action = QAction("Load file into right thread", self)
-        load_right_action.triggered.connect(lambda: self._add_file_as_thread("right"))
-        menu.addAction(load_right_action)
+        # Context-aware add / load: use the side where the cursor is.
+        add_action = QAction("Add thread", self)
+        add_action.triggered.connect(lambda: self._on_add_thread(side))
+        menu.addAction(add_action)
+
+        load_action = QAction("Load file", self)
+        if thread is not None:
+            load_action.triggered.connect(lambda: self._load_file_into_thread(thread))
+        else:
+            load_action.triggered.connect(lambda: self._on_add_thread(side))
+        menu.addAction(load_action)
+
+        if thread is not None:
+            new_event_action = QAction("New event", self)
+            new_event_action.triggered.connect(
+                lambda: self._on_new_event_for_thread(thread)
+            )
+            menu.addAction(new_event_action)
+
+        if thread is not None:
+            menu.addSeparator()
+
+            share_action = QAction("Set thread share...", self)
+            share_action.triggered.connect(lambda: self._on_set_thread_share(thread))
+            menu.addAction(share_action)
+
+            switch_action = QAction("Switch side", self)
+            switch_action.triggered.connect(lambda: self._view.switch_thread_side(thread))
+            menu.addAction(switch_action)
+
+            remove_action = QAction("Remove this thread", self)
+            remove_action.triggered.connect(lambda: self._view.remove_thread(thread))
+            menu.addAction(remove_action)
 
         menu.addSeparator()
 
@@ -212,12 +250,54 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 QMessageBox.critical(self, "Save Failed", str(e))
 
+    def _on_open_thread_manager(self):
+        dlg = ThreadManagerDialog(self._view, adapter=self._adapter, parent=self)
+        dlg.exec()
+
+    def _on_set_thread_share(self, thread):
+        share, ok = QInputDialog.getDouble(
+            self,
+            "Thread Share",
+            "Share of this side (0.0 ~ 1.0):",
+            thread.share,
+            0.01,
+            0.99,
+            2,
+        )
+        if ok:
+            self._view.set_thread_share(thread, share)
+
+    def _load_file_into_thread(self, thread):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open History File",
+            str(self._adapter.depot_root),
+            "History Files (*.his)",
+        )
+        if not path:
+            return
+        try:
+            events = self._adapter.load_file(path)
+            self._workspace.load_events(events)
+            source = events[0].source if events else path
+            indexes = [e.to_index() for e in events]
+            thread.source = source
+            self._view.set_thread_events(thread, indexes)
+        except Exception as e:
+            QMessageBox.critical(self, "Load Failed", str(e))
+
     def _on_open_filter(self):
         dlg = FilterDialog(self._workspace, self)
         dlg.filter_applied.connect(self._on_filter_applied)
         dlg.exec()
 
     def _on_filter_applied(self, indexes):
+        # Reuse an existing filter thread instead of stacking new ones.
+        for thread in self._view.left_threads() + self._view.right_threads():
+            if thread.source == "__filter__":
+                self._view.set_thread_events(thread, indexes)
+                return
+
         self._view.add_thread(
             indexes,
             align="left",

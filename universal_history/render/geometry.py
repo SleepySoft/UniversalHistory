@@ -17,6 +17,12 @@ from PyQt6.QtGui import QTransform
 from universal_history.chrono.jdn_timestamp import JDNTimestamp
 
 
+# Pixels reserved for the central axis strip.  This constant is used by both
+# the coordinate system (to compute left/right space budgets) and the timeline
+# view (to lay out threads).
+AXIS_BREADTH = 30
+
+
 @dataclass
 class Viewport:
     """Logical viewport dimensions."""
@@ -39,6 +45,12 @@ class CoordinateSystem:
         # Default scale: 200 px per year
         one_year_us = 365.2425 * 24 * 3600 * 1_000_000
         self.scale = 200.0 / one_year_us  # px / us
+
+        # Axis offset within the available transverse space.
+        # 0.0 -> axis at the near edge (left/top side gets 0 space).
+        # 0.5 -> axis centered (default).
+        # 1.0 -> axis at the far edge (right/bottom side gets 0 space).
+        self.axis_offset = 0.5
 
     # ------------------------------------------------------------------
     # Viewport
@@ -90,14 +102,34 @@ class CoordinateSystem:
     # Screen <-> logical coordinate transform
     # ------------------------------------------------------------------
 
+    def axis_screen_center(self) -> float:
+        """Return the screen pixel coordinate of the axis centre line."""
+        vp = self.viewport()
+        return AXIS_BREADTH / 2 + self.axis_offset * (vp.breadth - AXIS_BREADTH)
+
+    def thread_budgets(self) -> Tuple[float, float]:
+        """Return the available transverse pixels on each side of the axis.
+
+        Returns (left_budget, right_budget) in screen/logical units.  Either
+        value may be zero if the axis is pushed to one edge.
+        """
+        center = self.axis_screen_center()
+        breadth = self.viewport().breadth
+        left = max(0.0, center - AXIS_BREADTH / 2)
+        right = max(0.0, breadth - center - AXIS_BREADTH / 2)
+        return left, right
+
     def transform(self) -> QTransform:
         size = self.widget_size()
         t = QTransform()
-        # Center the logical origin on the widget, then rotate for vertical mode.
-        t.translate(size.width() / 2, size.height() / 2)
+        axis_center = self.axis_screen_center()
         if self.is_vertical:
-            # Rotate so the time axis runs vertically (top = past, bottom = future).
+            # Time axis runs vertically; the transverse axis is horizontal.
+            t.translate(axis_center, size.height() / 2)
             t.rotate(90)
+        else:
+            # Time axis runs horizontally; the transverse axis is vertical.
+            t.translate(size.width() / 2, axis_center)
         return t
 
     def logical_to_screen(self, p: QPointF) -> QPointF:

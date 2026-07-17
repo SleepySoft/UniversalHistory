@@ -11,10 +11,16 @@ built on a single proleptic-Gregorian JDN timestamp model.
   natural-language time expressions to `JDNTimestamp`.
 - **Timeline renderer**: PyQt6-based infinite zoom/pan timeline with automatic
   track layout for point and period events.
+- **Multiple threads**: display any number of sources on the left/right sides of
+  the axis; allocate side space proportionally via per-thread **share** (each
+  side's shares always sum to 1); add threads from existing `.his` files,
+  create new source files, or create empty threads and bind a source later.
+- **Horizontal / vertical orientation**: toggle the time axis direction with
+  `Ctrl+T`; threads keep their intuitive left/right placement.
 - **Event editor**: edit time, location, people, organization, tags, title,
   brief, and event text; select the focus label.
 - **Filter dialog**: query the workspace by source, focus label, included/excluded
-  tags, and time range.
+  tags, and time range; results reuse a single filter thread.
 
 ## Install
 
@@ -60,7 +66,8 @@ UniversalHistory/
 │   ├── chrono/                 # JDN timestamp, bridges, tick stepping
 │   ├── adapters/               # .his file adapter
 │   ├── render/                 # timeline geometry/layout/painter/view
-│   └── ui/                     # editor and filter dialogs
+│   └── ui/                     # editor, filter, thread-manager, add-thread,
+│                               # and bind-source dialogs
 ├── tests/                      # unit tests
 └── docs/                       # design notes
 ```

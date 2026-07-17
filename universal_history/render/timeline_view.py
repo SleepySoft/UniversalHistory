@@ -16,12 +16,42 @@ from universal_history.chrono.jdn_timestamp import JDNTimestamp
 from PyQt6.QtWidgets import QApplication, QWidget
 
 from universal_history.models import Event, EventIndex, Workspace
-from universal_history.render.geometry import CoordinateSystem
-from universal_history.render.layout import ThreadLayout
+from universal_history.render.geometry import AXIS_BREADTH, CoordinateSystem
+from universal_history.render.layout import MIN_TRACK_WIDTH, ThreadLayout
+
+
+# Color palette borrowed from the reference History project.
+# Thread backgrounds are warm/muted lanes; item colors are used for period bars.
+THREAD_BACKGROUNDS = [
+    QColor(182, 194, 154),
+    QColor(138, 151, 123),
+    QColor(244, 208, 0),
+    QColor(229, 87, 18),
+    QColor(178, 200, 187),
+    QColor(69, 137, 148),
+    QColor(117, 121, 74),
+    QColor(114, 83, 52),
+    QColor(130, 57, 53),
+    QColor(137, 190, 178),
+    QColor(201, 211, 140),
+    QColor(222, 156, 83),
+    QColor(160, 90, 124),
+    QColor(101, 147, 74),
+    QColor(64, 116, 52),
+    QColor(222, 125, 44),
+]
+
+ITEM_COLORS = [
+    QColor(185, 227, 217),
+    QColor(252, 157, 154),
+    QColor(249, 205, 173),
+    QColor(200, 200, 169),
+    QColor(131, 175, 155),
+    QColor(255, 245, 247),
+]
 from universal_history.render.painter import paint_axis, paint_item, paint_thread_background
 
 
-AXIS_BREADTH = 30  # pixels reserved for the central axis strip
 
 
 class TimelineView(QWidget):
@@ -38,11 +68,11 @@ class TimelineView(QWidget):
 
         self.coord = CoordinateSystem(self)
 
-        self.bg_color = QColor(25, 25, 30)
-        self.axis_color = QColor(100, 100, 100)
-        self.tick_color = QColor(180, 180, 180)
-        self.text_color = QColor(220, 220, 220)
-        self.item_text_color = QColor(20, 20, 20)
+        self.bg_color = QColor(255, 245, 247)
+        self.axis_color = QColor(120, 120, 120)
+        self.tick_color = QColor(100, 100, 100)
+        self.text_color = QColor(50, 50, 50)
+        self.item_text_color = QColor(30, 30, 30)
         self.tick_font = QFont("Segoe UI", 9)
         self.item_font = QFont("微软雅黑", 8)
 
@@ -85,14 +115,54 @@ class TimelineView(QWidget):
         align: str = "right",
         track_color: QColor = None,
         item_color: QColor = None,
+        min_track_width: float = MIN_TRACK_WIDTH,
     ) -> ThreadLayout:
         """Add a thread displaying all events from a workspace source."""
         if self._workspace is None:
             raise RuntimeError("Call set_workspace() before load_source()")
         events = [e.to_index() for e in self._workspace.events(source)]
         return self.add_thread(
-            events, align=align, source=source, track_color=track_color, item_color=item_color
+            events,
+            align=align,
+            source=source,
+            track_color=track_color,
+            item_color=item_color,
+            min_track_width=min_track_width,
         )
+
+    def _next_palette_index(self) -> int:
+        return len(self._left_threads) + len(self._right_threads)
+
+    def _pick_thread_colors(self) -> (QColor, QColor):
+        idx = self._next_palette_index()
+        return (
+            THREAD_BACKGROUNDS[idx % len(THREAD_BACKGROUNDS)],
+            ITEM_COLORS[idx % len(ITEM_COLORS)],
+        )
+
+    def _side_threads(self, align: str) -> List[ThreadLayout]:
+        return self._left_threads if align == "left" else self._right_threads
+
+    @staticmethod
+    def _normalize_shares(threads: List[ThreadLayout]) -> None:
+        """Scale thread shares so they sum to 1.0."""
+        total = sum(t.share for t in threads)
+        if total <= 0:
+            for t in threads:
+                t.share = 1.0 / max(1, len(threads))
+            return
+        for t in threads:
+            t.share = t.share / total
+
+    def _insert_thread_with_equal_share(
+        self, thread: ThreadLayout, align: str
+    ) -> None:
+        """Append a thread and give every thread on that side an equal share."""
+        side = self._side_threads(align)
+        side.append(thread)
+        share = 1.0 / len(side)
+        for t in side:
+            t.share = share
 
     def add_thread(
         self,
@@ -101,22 +171,28 @@ class TimelineView(QWidget):
         track_color: QColor = None,
         item_color: QColor = None,
         source: str = "",
+        min_track_width: float = MIN_TRACK_WIDTH,
     ) -> ThreadLayout:
+        if track_color is None or item_color is None:
+            default_track, default_item = self._pick_thread_colors()
+            track_color = track_color or default_track
+            item_color = item_color or default_item
         thread = ThreadLayout(
-            align=align, track_color=track_color, item_color=item_color, source=source
+            align=align,
+            track_color=track_color,
+            item_color=item_color,
+            source=source,
+            min_track_width=min_track_width,
         )
         thread.set_events(events)
-        if align == "left":
-            self._left_threads.append(thread)
-        else:
-            self._right_threads.append(thread)
+        self._insert_thread_with_equal_share(thread, align)
         self._arrange_threads()
         self.update()
         return thread
 
     def refresh_source(self, source: str) -> None:
         """Reload all threads bound to a given source."""
-        if self._workspace is None:
+        if self._workspace is None or not source:
             return
         indexes = [e.to_index() for e in self._workspace.events(source)]
         changed = False
@@ -132,6 +208,85 @@ class TimelineView(QWidget):
         self._left_threads.clear()
         self._right_threads.clear()
         self.update()
+
+    def left_threads(self) -> List[ThreadLayout]:
+        return list(self._left_threads)
+
+    def right_threads(self) -> List[ThreadLayout]:
+        return list(self._right_threads)
+
+    def set_thread_share(self, thread: ThreadLayout, share: float) -> bool:
+        """Set a thread's share and renormalize the rest of its side to sum 1."""
+        side = self._side_threads(thread.align)
+        if thread not in side:
+            return False
+        if len(side) <= 1:
+            thread.share = 1.0
+            self._arrange_threads()
+            self.update()
+            return True
+        thread.set_share(share)
+        others = [t for t in side if t is not thread]
+        remaining = 1.0 - thread.share
+        other_total = sum(t.share for t in others)
+        if other_total <= 0:
+            for t in others:
+                t.share = remaining / len(others)
+        else:
+            scale = remaining / other_total
+            for t in others:
+                t.share = max(0.001, t.share * scale)
+        # Final normalization to fix any rounding/clamping drift.
+        self._normalize_shares(side)
+        self._arrange_threads()
+        self.update()
+        return True
+
+    def remove_thread(self, thread: ThreadLayout) -> bool:
+        """Remove a thread from either side and renormalize shares."""
+        if thread in self._left_threads:
+            self._left_threads.remove(thread)
+            self._normalize_shares(self._left_threads)
+        elif thread in self._right_threads:
+            self._right_threads.remove(thread)
+            self._normalize_shares(self._right_threads)
+        else:
+            return False
+        self._arrange_threads()
+        self.update()
+        return True
+
+    def move_thread(self, thread: ThreadLayout, delta: int) -> bool:
+        """Move a thread up/down within its side list."""
+        lst = self._left_threads if thread in self._left_threads else self._right_threads
+        if thread not in lst:
+            return False
+        idx = lst.index(thread)
+        new_idx = idx + delta
+        if 0 <= new_idx < len(lst):
+            lst[idx], lst[new_idx] = lst[new_idx], lst[idx]
+            self._arrange_threads()
+            self.update()
+            return True
+        return False
+
+    def switch_thread_side(self, thread: ThreadLayout) -> bool:
+        """Move a thread from left to right or vice versa, renormalizing shares."""
+        if thread in self._left_threads:
+            self._left_threads.remove(thread)
+            self._normalize_shares(self._left_threads)
+            thread.align = "right"
+            self._insert_thread_with_equal_share(thread, "right")
+        elif thread in self._right_threads:
+            self._right_threads.remove(thread)
+            self._normalize_shares(self._right_threads)
+            thread.align = "left"
+            self._insert_thread_with_equal_share(thread, "left")
+        else:
+            return False
+        self._arrange_threads()
+        self.update()
+        return True
 
     def set_thread_events(self, thread: ThreadLayout, events: List[EventIndex]) -> None:
         thread.set_events(events)
@@ -230,25 +385,37 @@ class TimelineView(QWidget):
     def _arrange_threads(self) -> None:
         """Recompute transverse ranges and track layouts for all threads."""
         vp = self.coord.viewport()
-        available = max(0, vp.breadth / 2 - AXIS_BREADTH / 2)
+        left_budget, right_budget = self.coord.thread_budgets()
         half_len = vp.length / 2
 
-        def arrange_side(threads: List[ThreadLayout], positive: bool):
+        def arrange_side(threads: List[ThreadLayout], positive: bool, budget: float):
             count = len(threads)
-            if count == 0:
+            if count == 0 or budget <= 0:
                 return
-            width = available / count
-            for i, thread in enumerate(threads):
+            cursor = AXIS_BREADTH / 2
+            for thread in threads:
+                width = budget * thread.share
+                if width <= 0:
+                    continue
                 if positive:
-                    y0 = AXIS_BREADTH / 2 + i * width
-                    y1 = y0 + width
+                    y0 = cursor
+                    y1 = cursor + width
                 else:
-                    y1 = -(AXIS_BREADTH / 2 + i * width)
+                    y1 = -cursor
                     y0 = y1 - width
                 thread.arrange(self.coord, (y0, y1))
+                cursor += width
 
-        arrange_side(self._right_threads, positive=True)
-        arrange_side(self._left_threads, positive=False)
+        # In horizontal mode, right threads use logical +Y (screen bottom/right
+        # depending on orientation).  In vertical mode the 90° rotation flips the
+        # screen mapping, so we swap the logical side to keep "right" visually on
+        # the right and "left" on the left.
+        if self.coord.is_vertical:
+            arrange_side(self._right_threads, positive=False, budget=right_budget)
+            arrange_side(self._left_threads, positive=True, budget=left_budget)
+        else:
+            arrange_side(self._right_threads, positive=True, budget=right_budget)
+            arrange_side(self._left_threads, positive=False, budget=left_budget)
 
     # ------------------------------------------------------------------
     # Painting
@@ -375,6 +542,21 @@ class TimelineView(QWidget):
                 self._hover_item = None
                 self.setToolTip("")
                 self.update()
+
+    def thread_at_screen(self, screen_pos: QPointF) -> Optional[ThreadLayout]:
+        """Return the thread whose item is under the screen point, or None."""
+        logical_pos = self.coord.screen_to_logical(screen_pos)
+        for thread in self._left_threads + self._right_threads:
+            if thread.item_at_logical(logical_pos) is not None:
+                return thread
+        return None
+
+    def side_at_screen(self, screen_pos: QPointF) -> str:
+        """Return 'left' or 'right' for the side under the screen point."""
+        center = self.coord.axis_screen_center()
+        if self.coord.is_vertical:
+            return "left" if screen_pos.x() < center else "right"
+        return "left" if screen_pos.y() < center else "right"
 
     def _item_at_screen(self, screen_pos: QPointF):
         logical_pos = self.coord.screen_to_logical(screen_pos)

@@ -17,6 +17,9 @@ AXIS_LINE_WIDTH = 2
 TICK_LENGTH = 6
 LABEL_OFFSET = 12
 
+# Light chip for point events; period bars use the thread's item color.
+POINT_EVENT_FILL = QColor(243, 244, 246)
+
 
 def _format_tick_label(tick: JDNTimestamp, level: TickLevel) -> str:
     y, m, d, h, mn, s, _ = tick.to_gregorian()
@@ -130,9 +133,12 @@ def paint_thread_background(
     qp: QPainter, coord: CoordinateSystem, thread: ThreadLayout
 ) -> None:
     """Paint the background area of a thread."""
+    height = thread.y1 - thread.y0
+    if height <= 0:
+        return
     vp = coord.viewport()
     half_len = vp.length / 2
-    rect = QRectF(-half_len, thread.y0, vp.length, thread.y1 - thread.y0)
+    rect = QRectF(-half_len, thread.y0, vp.length, height)
     qp.fillRect(rect, thread.track_color)
 
 
@@ -147,6 +153,8 @@ def paint_item(
     """Paint a single event item: rectangle in logical coords, text in screen."""
     rect = item.rect()
 
+    fill_color = POINT_EVENT_FILL if item.is_point else color
+
     # When a point event is zoomed far out, its fixed 120 px card would span
     # centuries and look like a period bar. In that case draw a thin marker.
     if item.is_point:
@@ -154,7 +162,7 @@ def paint_item(
         point_span_us = rect.width() / coord.scale if coord.scale else 0
         if point_span_us > 2 * one_year_us:
             center_x = (rect.left() + rect.right()) / 2
-            qp.setPen(QPen(color, 2))
+            qp.setPen(QPen(fill_color, 2))
             qp.drawLine(
                 QPointF(center_x, rect.top()), QPointF(center_x, rect.bottom())
             )
@@ -163,8 +171,8 @@ def paint_item(
 
     # Draw the geometry with the logical transform active.
     radius = 4.0
-    qp.setBrush(color)
-    qp.setPen(QPen(color.darker(120), 1))
+    qp.setBrush(fill_color)
+    qp.setPen(QPen(fill_color.darker(120), 1))
     qp.drawRoundedRect(rect, radius, radius)
 
     if item.is_point:
