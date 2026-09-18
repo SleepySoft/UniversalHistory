@@ -27,7 +27,7 @@ class BindSourceDialog(QDialog):
     def __init__(self, adapter: HisFileAdapter, parent=None):
         super().__init__(parent)
         self._adapter = adapter
-        self.setWindowTitle("Bind Source to Thread")
+        self.setWindowTitle(self.tr("Bind Source to Thread"))
         self.resize(450, 140)
 
         self._source: Optional[str] = None
@@ -38,20 +38,20 @@ class BindSourceDialog(QDialog):
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.addWidget(
-            QLabel("This thread has no source file yet. Choose one to add records.")
+            QLabel(self.tr("This thread has no source file yet. Choose one to add records."))
         )
 
         btn_layout = QHBoxLayout()
 
-        load_btn = QPushButton("Load existing file...")
+        load_btn = QPushButton(self.tr("Load existing file..."))
         load_btn.clicked.connect(self._on_load_existing)
         btn_layout.addWidget(load_btn)
 
-        new_btn = QPushButton("Create new source file...")
+        new_btn = QPushButton(self.tr("Create new source file..."))
         new_btn.clicked.connect(self._on_create_new)
         btn_layout.addWidget(new_btn)
 
-        cancel_btn = QPushButton("Cancel")
+        cancel_btn = QPushButton(self.tr("Cancel"))
         cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(cancel_btn)
 
@@ -60,9 +60,9 @@ class BindSourceDialog(QDialog):
     def _on_load_existing(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "Open History File",
+            self.tr("Open History File"),
             str(self._adapter.depot_root),
-            "History Files (*.his)",
+            self.tr("History Files (*.his)"),
         )
         if not path:
             return
@@ -71,14 +71,14 @@ class BindSourceDialog(QDialog):
             self._source = self._events[0].source if self._events else path
             self.accept()
         except Exception as e:
-            QMessageBox.critical(self, "Load Failed", str(e))
+            QMessageBox.critical(self, self.tr("Load Failed"), str(e))
 
     def _on_create_new(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
             self,
-            "Create New History Source File",
+            self.tr("Create New History Source File"),
             str(self._adapter.depot_root),
-            "History Files (*.his)",
+            self.tr("History Files (*.his)"),
         )
         if not path:
             return
@@ -89,7 +89,7 @@ class BindSourceDialog(QDialog):
             self._events = []
             self.accept()
         except Exception as e:
-            QMessageBox.critical(self, "Create Failed", str(e))
+            QMessageBox.critical(self, self.tr("Create Failed"), str(e))
 
     def get_result(self):
         """Return (source, events) chosen by the user.

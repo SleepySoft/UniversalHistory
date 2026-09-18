@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPushButton,
     QSlider,
     QVBoxLayout,
@@ -36,7 +37,7 @@ class ThreadManagerDialog(QDialog):
         super().__init__(parent)
         self._view = view
         self._adapter = adapter
-        self.setWindowTitle("Thread Manager")
+        self.setWindowTitle(self.tr("Thread Manager"))
         self.resize(750, 500)
 
         self._updating = False
@@ -53,18 +54,18 @@ class ThreadManagerDialog(QDialog):
         layout = QVBoxLayout(self)
 
         # Add thread
-        add_box = QGroupBox("Add Thread")
+        add_box = QGroupBox(self.tr("Add Thread"))
         add_layout = QHBoxLayout(add_box)
-        self._add_left_btn = QPushButton("Add Left")
+        self._add_left_btn = QPushButton(self.tr("Add Left"))
         self._add_left_btn.clicked.connect(lambda: self._on_add_thread("left"))
         add_layout.addWidget(self._add_left_btn)
-        self._add_right_btn = QPushButton("Add Right")
+        self._add_right_btn = QPushButton(self.tr("Add Right"))
         self._add_right_btn.clicked.connect(lambda: self._on_add_thread("right"))
         add_layout.addWidget(self._add_right_btn)
         layout.addWidget(add_box)
 
         # Axis offset
-        offset_box = QGroupBox("Axis Offset")
+        offset_box = QGroupBox(self.tr("Axis Offset"))
         offset_layout = QHBoxLayout(offset_box)
         self._offset_slider = QSlider(Qt.Orientation.Horizontal)
         self._offset_slider.setRange(0, 100)
@@ -80,11 +81,11 @@ class ThreadManagerDialog(QDialog):
 
         self._left_list = QListWidget()
         self._left_list.currentItemChanged.connect(self._on_selection_changed)
-        lists_layout.addWidget(self._group_with_label("Left Threads", self._left_list))
+        lists_layout.addWidget(self._group_with_label(self.tr("Left Threads"), self._left_list))
 
         self._right_list = QListWidget()
         self._right_list.currentItemChanged.connect(self._on_selection_changed)
-        lists_layout.addWidget(self._group_with_label("Right Threads", self._right_list))
+        lists_layout.addWidget(self._group_with_label(self.tr("Right Threads"), self._right_list))
 
         # Controls for selected thread
         controls_layout = QVBoxLayout()
@@ -94,24 +95,23 @@ class ThreadManagerDialog(QDialog):
         self._share_spin.setRange(0.01, 0.99)
         self._share_spin.setDecimals(2)
         self._share_spin.setSingleStep(0.05)
-        self._share_spin.setSuffix(" %")
         self._share_spin.valueChanged.connect(self._on_share_changed)
-        controls_layout.addWidget(QLabel("Thread Share"))
+        controls_layout.addWidget(QLabel(self.tr("Thread Share")))
         controls_layout.addWidget(self._share_spin)
 
-        self._remove_btn = QPushButton("Remove")
+        self._remove_btn = QPushButton(self.tr("Remove"))
         self._remove_btn.clicked.connect(self._on_remove)
         controls_layout.addWidget(self._remove_btn)
 
-        self._up_btn = QPushButton("Move Up")
+        self._up_btn = QPushButton(self.tr("Move Up"))
         self._up_btn.clicked.connect(lambda: self._on_move(-1))
         controls_layout.addWidget(self._up_btn)
 
-        self._down_btn = QPushButton("Move Down")
+        self._down_btn = QPushButton(self.tr("Move Down"))
         self._down_btn.clicked.connect(lambda: self._on_move(1))
         controls_layout.addWidget(self._down_btn)
 
-        self._switch_btn = QPushButton("Switch Side")
+        self._switch_btn = QPushButton(self.tr("Switch Side"))
         self._switch_btn.clicked.connect(self._on_switch_side)
         controls_layout.addWidget(self._switch_btn)
 
@@ -121,7 +121,7 @@ class ThreadManagerDialog(QDialog):
         layout.addLayout(lists_layout)
 
         # Close button
-        close_btn = QPushButton("Close")
+        close_btn = QPushButton(self.tr("Close"))
         close_btn.clicked.connect(self.accept)
         layout.addWidget(close_btn)
 
@@ -144,9 +144,8 @@ class ThreadManagerDialog(QDialog):
         for thread in self._view.right_threads():
             self._right_list.addItem(self._make_item(thread))
 
-    @staticmethod
-    def _make_item(thread: ThreadLayout) -> QListWidgetItem:
-        source = thread.source or "(custom)"
+    def _make_item(self, thread: ThreadLayout) -> QListWidgetItem:
+        source = thread.source or self.tr("(custom)")
         text = f"{source}\nshare={thread.share:.0%}"
         item = QListWidgetItem(text)
         item.setData(Qt.ItemDataRole.UserRole, id(thread))
@@ -187,8 +186,7 @@ class ThreadManagerDialog(QDialog):
     def _on_offset_changed(self, value: int) -> None:
         self._offset_label.setText(str(value))
         self._view.coord.axis_offset = value / 100.0
-        self._view._arrange_threads()
-        self._view.update()
+        self._view.relayout()
 
     def _on_selection_changed(self) -> None:
         # Clear selection in the other list.
@@ -211,6 +209,16 @@ class ThreadManagerDialog(QDialog):
     def _on_remove(self) -> None:
         thread = self._selected_thread()
         if thread is None:
+            return
+        # Removing a thread only unbinds it from the view (no data change),
+        # so a plain close confirmation is enough (decision 2026-09-18).
+        reply = QMessageBox.question(
+            self,
+            self.tr("Remove Thread"),
+            self.tr("Remove this thread from the view? The events stay saved."),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
             return
         self._view.remove_thread(thread)
         self._refresh_lists()

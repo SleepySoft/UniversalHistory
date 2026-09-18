@@ -37,7 +37,7 @@ class AddThreadDialog(QDialog):
         super().__init__(parent)
         self._adapter = adapter
         self._side = side
-        self.setWindowTitle("Add Thread")
+        self.setWindowTitle(self.tr("Add Thread"))
         self.resize(550, 180)
 
         self._source: Optional[str] = None
@@ -50,31 +50,31 @@ class AddThreadDialog(QDialog):
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
 
-        layout.addWidget(QLabel(f"New thread will be added on the {self._side} side."))
+        layout.addWidget(QLabel(self.tr("New thread will be added on the %1 side.").replace("%1", self._side)))
 
         # Source path display
         source_layout = QHBoxLayout()
-        source_layout.addWidget(QLabel("Source:"))
+        source_layout.addWidget(QLabel(self.tr("Source:")))
         self._source_edit = QLineEdit()
         self._source_edit.setReadOnly(True)
-        self._source_edit.setPlaceholderText("No source selected")
+        self._source_edit.setPlaceholderText(self.tr("No source selected"))
         source_layout.addWidget(self._source_edit)
         layout.addLayout(source_layout)
 
         # Buttons
         btn_layout = QHBoxLayout()
 
-        load_btn = QPushButton("Load existing file...")
+        load_btn = QPushButton(self.tr("Load existing file..."))
         load_btn.setAutoDefault(False)
         load_btn.clicked.connect(self._on_load_existing)
         btn_layout.addWidget(load_btn)
 
-        new_btn = QPushButton("Create new source file...")
+        new_btn = QPushButton(self.tr("Create new source file..."))
         new_btn.setAutoDefault(False)
         new_btn.clicked.connect(self._on_create_new)
         btn_layout.addWidget(new_btn)
 
-        empty_btn = QPushButton("Empty thread")
+        empty_btn = QPushButton(self.tr("Empty thread"))
         empty_btn.setAutoDefault(False)
         empty_btn.clicked.connect(self._on_empty_thread)
         btn_layout.addWidget(empty_btn)
@@ -84,11 +84,11 @@ class AddThreadDialog(QDialog):
 
         # Dialog buttons
         dialog_btn_layout = QHBoxLayout()
-        self._add_btn = QPushButton("Add")
+        self._add_btn = QPushButton(self.tr("Add"))
         self._add_btn.setDefault(True)
         self._add_btn.setEnabled(False)
         self._add_btn.clicked.connect(self.accept)
-        cancel_btn = QPushButton("Cancel")
+        cancel_btn = QPushButton(self.tr("Cancel"))
         cancel_btn.clicked.connect(self.reject)
         dialog_btn_layout.addStretch()
         dialog_btn_layout.addWidget(self._add_btn)
@@ -102,9 +102,9 @@ class AddThreadDialog(QDialog):
     def _on_load_existing(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "Open History File",
+            self.tr("Open History File"),
             str(self._adapter.depot_root),
-            "History Files (*.his)",
+            self.tr("History Files (*.his)"),
         )
         if not path:
             return
@@ -115,14 +115,14 @@ class AddThreadDialog(QDialog):
             self._source_edit.setText(self._source)
             self._add_btn.setEnabled(True)
         except Exception as e:
-            QMessageBox.critical(self, "Load Failed", str(e))
+            QMessageBox.critical(self, self.tr("Load Failed"), str(e))
 
     def _on_create_new(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
             self,
-            "Create New History Source File",
+            self.tr("Create New History Source File"),
             str(self._adapter.depot_root),
-            "History Files (*.his)",
+            self.tr("History Files (*.his)"),
         )
         if not path:
             return
@@ -135,12 +135,12 @@ class AddThreadDialog(QDialog):
             self._source_edit.setText(self._source)
             self._add_btn.setEnabled(True)
         except Exception as e:
-            QMessageBox.critical(self, "Create Failed", str(e))
+            QMessageBox.critical(self, self.tr("Create Failed"), str(e))
 
     def _on_empty_thread(self) -> None:
         self._source = ""
         self._events = []
-        self._source_edit.setText("(empty thread)")
+        self._source_edit.setText(self.tr("(empty thread)"))
         self._add_btn.setEnabled(True)
 
     # ------------------------------------------------------------------

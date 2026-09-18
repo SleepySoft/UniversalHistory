@@ -1,7 +1,8 @@
 import unittest
+from unittest.mock import patch
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QMessageBox
 
 from universal_history.adapters import HisFileAdapter
 from universal_history.chrono.jdn_timestamp import JDNTimestamp
@@ -44,10 +45,33 @@ class TestThreadManagerDialog(unittest.TestCase):
 
         dlg = ThreadManagerDialog(view, adapter=HisFileAdapter())
         dlg._left_list.setCurrentRow(0)
-        dlg._on_remove()
+        with patch(
+            "universal_history.ui.thread_manager.QMessageBox.question",
+            return_value=QMessageBox.StandardButton.Yes,
+        ):
+            dlg._on_remove()
 
         self.assertNotIn(thread, view.left_threads())
         self.assertEqual(dlg._left_list.count(), 0)
+
+        view.deleteLater()
+        dlg.deleteLater()
+
+    def test_remove_thread_cancelled_keeps_thread(self):
+        view = TimelineView()
+        view.resize(800, 600)
+        thread = view.add_thread(self._make_events(), align="left")
+
+        dlg = ThreadManagerDialog(view, adapter=HisFileAdapter())
+        dlg._left_list.setCurrentRow(0)
+        with patch(
+            "universal_history.ui.thread_manager.QMessageBox.question",
+            return_value=QMessageBox.StandardButton.No,
+        ):
+            dlg._on_remove()
+
+        self.assertIn(thread, view.left_threads())
+        self.assertEqual(dlg._left_list.count(), 1)
 
         view.deleteLater()
         dlg.deleteLater()
