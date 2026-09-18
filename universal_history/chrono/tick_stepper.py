@@ -5,7 +5,7 @@ import math
 from universal_history.chrono.jdn_timestamp import JDNTimestamp
 
 # 定义刻度类型的枚举/常量
-StepUnit = Literal['Day', 'Month', 'Year']
+StepUnit = Literal['Second', 'Day', 'Month', 'Year']
 
 
 @dataclass
@@ -67,6 +67,16 @@ class TickStepper:
         # 1. 转换为公历进行计算 (这是处理非线性历法的唯一正确方式)
         y, m, d, h, *_ = jdn.to_gregorian()
 
+        if level.unit == 'Second':
+            # 日内对齐：把当天秒数向下取整到 step_count 的整数倍
+            # （hour_1/hour_6/minute_10 等子日层级）
+            secs = jdn.to_gregorian()[3] * 3600 + jdn.to_gregorian()[4] * 60 \
+                + jdn.to_gregorian()[5]
+            snapped = (secs // level.step_count) * level.step_count
+            hh, rem = divmod(snapped, 3600)
+            mm, ss = divmod(rem, 60)
+            return JDNTimestamp.from_ymd_hms(y, m, d, hh, mm, ss)
+
         if level.unit == 'Day':
             # 简单天：对齐到午夜 00:00:00
             if level.step_count == 1:
@@ -115,6 +125,10 @@ class TickStepper:
         """
         y, m, d, *_ = current.to_gregorian()
 
+        if level.unit == 'Second':
+            # 子日层级：按秒数平移（JDN 浮点日运算，微秒精度）
+            return current + (level.step_count / 86400.0)
+
         if level.unit == 'Day':
             # 直接加天数 (注意：JDNTimestamp + float 是合法的)
             return current + float(level.step_count)
@@ -155,6 +169,15 @@ ONE_YEAR = int(ONE_DAY * 365.2425)
 # 限制：公元前1万年 - 公元1万年
 HIST_MIN = -10000
 HIST_MAX = 10000
+
+# --- Level 0: Sub-day (Clock) ---
+# 时/分/秒层级（旧版有 1 天主刻度 → 副 4/2/1 小时档；多级 LOD 下细层自动作为
+# 副刻度淡入）。step_count 单位为秒。仅在有信史范围内显示。
+TickStepper._register('second_10', '10 Seconds', 'Second', 10, 10 * 1_000_000, HIST_MIN, HIST_MAX)
+TickStepper._register('minute_1', '1 Minute', 'Second', 60, 60 * 1_000_000, HIST_MIN, HIST_MAX)
+TickStepper._register('minute_10', '10 Minutes', 'Second', 600, 600 * 1_000_000, HIST_MIN, HIST_MAX)
+TickStepper._register('hour_1', '1 Hour', 'Second', 3600, 3600 * 1_000_000, HIST_MIN, HIST_MAX)
+TickStepper._register('hour_6', '6 Hours', 'Second', 21600, 21600 * 1_000_000, HIST_MIN, HIST_MAX)
 
 TickStepper._register('day_1', '1 Day', 'Day', 1, ONE_DAY, HIST_MIN, HIST_MAX)
 TickStepper._register('week_1', '1 Week', 'Day', 7, ONE_DAY * 7, HIST_MIN, HIST_MAX)

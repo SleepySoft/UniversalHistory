@@ -25,8 +25,26 @@ TICK_FADE_MIN_PX = 50.0
 TICK_FADE_FULL_PX = 100.0
 TICK_DEMOTE_PX = 300.0
 
+# Three-tier display degradation (core_design.md §5.2): ticks deeper than
+# DEEP_TIME_YEAR (astronomical -10000, i.e. earlier than 10001 BC) are labeled
+# in BP (Before Present, reference epoch 1950 AD) magnitudes.
+DEEP_TIME_YEAR = -10_000
+BP_REFERENCE_YEAR = 1950
+
 # Light chip for point events; period bars use the thread's item color.
 POINT_EVENT_FILL = QColor(243, 244, 246)
+
+
+def _format_bp(y: int) -> str:
+    """BP (Before Present, 1950 AD) magnitude label for deep-time ticks."""
+    bp = BP_REFERENCE_YEAR - y
+    if bp >= 1_000_000_000:
+        return f"{bp / 1_000_000_000:g} Ga BP"
+    if bp >= 1_000_000:
+        return f"{bp / 1_000_000:g} Ma BP"
+    if bp >= 1_000:
+        return f"{bp / 1_000:g} ka BP"
+    return f"{bp} BP"
 
 
 def _format_tick_label(tick: JDNTimestamp, level: TickLevel) -> str:
@@ -38,9 +56,14 @@ def _format_tick_label(tick: JDNTimestamp, level: TickLevel) -> str:
         display_year = -(y - 1)
         era_suffix = " BC"
 
+    # Tier 3 (core_design §5.2): anything deeper than 10001 BC is Deep Time —
+    # label in BP magnitudes regardless of the tick level.
+    if y < DEEP_TIME_YEAR:
+        return _format_bp(y)
+
     if level.unit == "Year":
-        # Deep Time: raw year numbers are meaningless at geological scales;
-        # use ka / Ma / Ga magnitude labels instead.
+        # Deep Time magnitudes for coarse levels near the boundary (a major
+        # level of 10k+ years can straddle the BP threshold).
         if level.step_count >= 1_000_000_000:
             return f"{y / 1_000_000_000:g} Ga"
         if level.step_count >= 1_000_000:
@@ -60,6 +83,16 @@ def _format_tick_label(tick: JDNTimestamp, level: TickLevel) -> str:
         if d == 1:
             return f"{m:02d}/{display_year}"
         return f"{d}"
+
+    if level.unit == "Second":
+        # Sub-day levels: show the clock time; give the date at day start.
+        if h == 0 and mn == 0 and s == 0:
+            return f"{display_year}{era_suffix}-{m:02d}-{d:02d}"
+        if level.step_count >= 3600:
+            return f"{h:02d}:00"
+        if level.step_count >= 60:
+            return f"{h:02d}:{mn:02d}"
+        return f"{h:02d}:{mn:02d}:{s:02d}"
 
     return str(tick)
 
