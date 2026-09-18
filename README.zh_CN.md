@@ -67,6 +67,8 @@ pyinstaller packaging/service.spec --distpath dist --workpath build -y          
 python -m unittest discover -s tests -v
 ```
 
+UI / 交互测试规范（offscreen 平台、事件注入三档、断言模式、常见坑）：见 `docs/testing.md`。
+
 ## 项目结构
 
 ```

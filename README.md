@@ -89,6 +89,9 @@ pyinstaller packaging/service.spec --distpath dist --workpath build -y          
 python -m unittest discover -s tests -v
 ```
 
+UI / interaction testing conventions (offscreen platform, event-injection
+tiers, assertion patterns, pitfalls): see `docs/testing.md`.
+
 ## Project layout
 
 ```
