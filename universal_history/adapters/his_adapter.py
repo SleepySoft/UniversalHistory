@@ -20,6 +20,7 @@ from universal_history.parsing import (
     LabelTagParser,
 )
 
+from universal_history.adapters.fingerprint import FileFingerprints
 from universal_history.models.event import Event
 from universal_history.chrono.history_time_adapter import history_record_time_range
 
@@ -71,7 +72,7 @@ class HisFileAdapter:
             depot_root = Path(HistoryRecordLoader.get_local_depot_root())
         self.depot_root = Path(depot_root)
         # absolute path -> sha256 of file content at last load/save
-        self._fingerprints: Dict[str, str] = {}
+        self._fingerprints = FileFingerprints()
 
     # ------------------------------------------------------------------
     # Load methods
@@ -122,13 +123,10 @@ class HisFileAdapter:
         this adapter and its on-disk content has changed since. Pass
         ``force=True`` to overwrite anyway.
         """
-        if not force:
-            known = self._fingerprints.get(self._fingerprint_key(path))
-            current = self._file_fingerprint(path)
-            if known is not None and current is not None and current != known:
-                raise SaveConflictError(
-                    f"File changed on disk since it was loaded: {path}"
-                )
+        if not force and self._fingerprints.has_conflict(path):
+            raise SaveConflictError(
+                f"File changed on disk since it was loaded: {path}"
+            )
         path_obj = Path(path)
         path_obj.parent.mkdir(parents=True, exist_ok=True)
         with open(path_obj, "wt", encoding="utf-8") as f:
@@ -146,24 +144,8 @@ class HisFileAdapter:
     # Conflict-detection helpers
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _fingerprint_key(path: str) -> str:
-        return str(Path(path).absolute())
-
-    @staticmethod
-    def _file_fingerprint(path: str) -> Optional[str]:
-        import hashlib
-
-        try:
-            with open(path, "rb") as f:
-                return hashlib.sha256(f.read()).hexdigest()
-        except OSError:
-            return None
-
     def _remember_fingerprint(self, path: str) -> None:
-        fp = self._file_fingerprint(path)
-        if fp is not None:
-            self._fingerprints[self._fingerprint_key(path)] = fp
+        self._fingerprints.remember(path)
 
     # ------------------------------------------------------------------
     # Helpers
