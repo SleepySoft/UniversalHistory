@@ -96,6 +96,13 @@ class EventIndex:
     def is_point_event(self) -> bool:
         return self.since is not None and self.until is not None and self.since == self.until
 
+    def is_period_event(self) -> bool:
+        """True if this event spans a non-zero duration (known-issues #4)."""
+        return self.since is not None and self.until is not None and self.since != self.until
+
+    def has_time(self) -> bool:
+        return self.since is not None and self.until is not None
+
 
 class Workspace(QObject):
     """
@@ -110,6 +117,7 @@ class Workspace(QObject):
     event_updated = pyqtSignal(Event)
     event_removed = pyqtSignal(str)  # uuid
     source_loaded = pyqtSignal(str)  # source path
+    source_removed = pyqtSignal(str)  # source path
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -133,13 +141,19 @@ class Workspace(QObject):
     def add(self, event: Event) -> None:
         if not event.source:
             raise ValueError("Event source cannot be empty")
+        if self.get_by_uuid(event.uuid) is not None:
+            raise ValueError(f"Duplicate event uuid: {event.uuid}")
         self._source_events.setdefault(event.source, [])
         self._source_events[event.source].append(event)
         self.event_added.emit(event)
 
     def upsert(self, event: Event) -> None:
-        """Replace an existing event with the same uuid, or append."""
-        existing = self.remove(event.uuid)
+        """Replace an existing event with the same uuid, or append.
+
+        Emits exactly one signal: event_updated when replacing, event_added
+        when appending (known-issues #2: no intermediate event_removed).
+        """
+        existing = self._remove_silent(event.uuid)
         self._add_silent(event)
         if existing is not None:
             self.event_updated.emit(event)
@@ -147,13 +161,19 @@ class Workspace(QObject):
             self.event_added.emit(event)
 
     def remove(self, uuid: str) -> Optional[Event]:
+        removed = self._remove_silent(uuid)
+        if removed is not None:
+            self.event_removed.emit(uuid)
+        return removed
+
+    def _remove_silent(self, uuid: str) -> Optional[Event]:
+        """Remove the first event with this uuid without emitting."""
         for source, events in self._source_events.items():
             for i, e in enumerate(events):
                 if e.uuid == uuid:
                     removed = events.pop(i)
                     if not events:
                         self._source_events.pop(source, None)
-                    self.event_removed.emit(uuid)
                     return removed
         return None
 
@@ -161,12 +181,15 @@ class Workspace(QObject):
         events = self._source_events.pop(source, [])
         for e in events:
             self.event_removed.emit(e.uuid)
+        if events:
+            self.source_removed.emit(source)
 
     def clear(self) -> None:
         sources = list(self._source_events.keys())
         self._source_events.clear()
         for s in sources:
-            self.source_loaded.emit(s)
+            # known-issues #1: was source_loaded (wrong semantics).
+            self.source_removed.emit(s)
 
     def get_by_uuid(self, uuid: str) -> Optional[Event]:
         for e in self.events():
@@ -218,7 +241,10 @@ class Workspace(QObject):
                     lo, hi = time_range
                     if event.until is None or event.since is None:
                         continue
-                    if not (event.since <= hi and event.until >= lo):
+                    # Either end may be None: open-ended range.
+                    if lo is not None and event.until < lo:
+                        continue
+                    if hi is not None and event.since > hi:
                         continue
                 results.append(event)
 
@@ -271,5 +297,10 @@ class Workspace(QObject):
         """Add without emitting (used by upsert/load)."""
         if not event.source:
             raise ValueError("Event source cannot be empty")
+        if self.get_by_uuid(event.uuid) is not None:
+            # Bulk loads stay tolerant, but duplicates are not silently
+            # stored twice (known-issues #3).
+            print(f"Warning: duplicate event uuid skipped: {event.uuid}")
+            return
         self._source_events.setdefault(event.source, [])
         self._source_events[event.source].append(event)

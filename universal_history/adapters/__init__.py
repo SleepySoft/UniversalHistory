@@ -1,3 +1,3 @@
-from .his_adapter import HisFileAdapter
+from .his_adapter import HisFileAdapter, SaveConflictError
 
-__all__ = ["HisFileAdapter"]
+__all__ = ["HisFileAdapter", "SaveConflictError"]

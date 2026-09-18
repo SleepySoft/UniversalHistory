@@ -4,31 +4,38 @@ HisFileAdapter
 Load legacy `.his` files / depots / directories and convert them into the new
 UniversalHistory Event model.
 
-This adapter intentionally reuses History's own parser (`HistoryRecordLoader`)
-because the format is custom and the parser already handles it. It then maps
-the resulting HistoryRecords to Event instances using JDNTimestamp.
+The .his parser is the native port in `universal_history.parsing` (behaviour
+compatible with History's own parser); this adapter only maps the resulting
+HistoryRecords to Event instances using JDNTimestamp.
 """
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
-# Ensure the legacy History project is importable.
-_HISTORY_ROOT = Path(__file__).resolve().parents[3] / "History"
-_HISTORY_ROOT = _HISTORY_ROOT.resolve()
-if str(_HISTORY_ROOT) not in sys.path:
-    sys.path.insert(0, str(_HISTORY_ROOT))
+from universal_history.parsing import (
+    HistoryRecord,
+    HistoryRecordLoader,
+    LabelTagParser,
+)
 
-from core import HistoryRecord, HistoryRecordLoader  # noqa: E402
-
-from universal_history.models.event import Event  # noqa: E402
-from universal_history.chrono.history_time_adapter import history_record_time_range  # noqa: E402
+from universal_history.models.event import Event
+from universal_history.chrono.history_time_adapter import history_record_time_range
 
 
 # Labels that are stored as dedicated Event fields rather than generic labels.
 _RESERVED_LABELS = {"uuid", "since", "until"}
+
+
+class SaveConflictError(RuntimeError):
+    """
+    Raised when saving a .his file whose on-disk content changed since this
+    adapter last loaded/saved it (known-issues #6: was last-writer-wins).
+
+    Catch this in the UI, ask the user, and retry with ``force=True`` to
+    overwrite anyway.
+    """
 
 
 def _history_record_to_event(record: HistoryRecord) -> Event:
@@ -63,6 +70,8 @@ class HisFileAdapter:
         if depot_root is None:
             depot_root = Path(HistoryRecordLoader.get_local_depot_root())
         self.depot_root = Path(depot_root)
+        # absolute path -> sha256 of file content at last load/save
+        self._fingerprints: Dict[str, str] = {}
 
     # ------------------------------------------------------------------
     # Load methods
@@ -70,6 +79,7 @@ class HisFileAdapter:
 
     def load_file(self, path: str) -> List[Event]:
         """Load a single .his file and return a list of Events."""
+        self._remember_fingerprint(path)
         result = HistoryRecordLoader.from_file(path)
         events: List[Event] = []
         for records in result.values():
@@ -78,6 +88,8 @@ class HisFileAdapter:
 
     def load_source(self, source: str) -> List[Event]:
         """Load by source path (relative to depot root or absolute)."""
+        if not HistoryRecordLoader.is_web_url(source):
+            self._remember_fingerprint(HistoryRecordLoader.source_to_absolute_path(source))
         result = HistoryRecordLoader.from_source(source)
         events: List[Event] = []
         for records in result.values():
@@ -87,19 +99,36 @@ class HisFileAdapter:
     def load_depot(self, depot_name: str) -> Dict[str, List[Event]]:
         """Load an entire depot directory (e.g. 'example', 'China_CN')."""
         raw = HistoryRecordLoader.from_local_depot(depot_name)
+        for path in raw.keys():
+            self._remember_fingerprint(path)
         return self._convert_raw(raw)
 
     def load_directory(self, directory: str) -> Dict[str, List[Event]]:
         """Load all .his files under an arbitrary directory."""
         raw = HistoryRecordLoader.from_directory(directory)
+        for path in raw.keys():
+            self._remember_fingerprint(path)
         return self._convert_raw(raw)
 
     # ------------------------------------------------------------------
     # Save methods
     # ------------------------------------------------------------------
 
-    def save_file(self, path: str, events: List[Event]) -> None:
-        """Write a list of Events back to a .his file (format-compatible)."""
+    def save_file(self, path: str, events: List[Event], force: bool = False) -> None:
+        """
+        Write a list of Events back to a .his file (format-compatible).
+
+        Raises SaveConflictError when the file was previously loaded/saved by
+        this adapter and its on-disk content has changed since. Pass
+        ``force=True`` to overwrite anyway.
+        """
+        if not force:
+            known = self._fingerprints.get(self._fingerprint_key(path))
+            current = self._file_fingerprint(path)
+            if known is not None and current is not None and current != known:
+                raise SaveConflictError(
+                    f"File changed on disk since it was loaded: {path}"
+                )
         path_obj = Path(path)
         path_obj.parent.mkdir(parents=True, exist_ok=True)
         with open(path_obj, "wt", encoding="utf-8") as f:
@@ -107,10 +136,34 @@ class HisFileAdapter:
                 if i > 0:
                     f.write("\n# ----------------------------------------------------------------------------------------------------------------------\n\n")
                 f.write(self._event_to_his_text(event))
+        self._remember_fingerprint(path)
 
-    def save_workspace(self, workspace: "Workspace", source: str, path: str) -> None:
+    def save_workspace(self, workspace: "Workspace", source: str, path: str, force: bool = False) -> None:
         """Save all events belonging to a single workspace source."""
-        self.save_file(path, workspace.events(source))
+        self.save_file(path, workspace.events(source), force=force)
+
+    # ------------------------------------------------------------------
+    # Conflict-detection helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _fingerprint_key(path: str) -> str:
+        return str(Path(path).absolute())
+
+    @staticmethod
+    def _file_fingerprint(path: str) -> Optional[str]:
+        import hashlib
+
+        try:
+            with open(path, "rb") as f:
+                return hashlib.sha256(f.read()).hexdigest()
+        except OSError:
+            return None
+
+    def _remember_fingerprint(self, path: str) -> None:
+        fp = self._file_fingerprint(path)
+        if fp is not None:
+            self._fingerprints[self._fingerprint_key(path)] = fp
 
     # ------------------------------------------------------------------
     # Helpers
@@ -163,8 +216,6 @@ class HisFileAdapter:
 
 def _label_line(label: str, tags: List[str]) -> str:
     """Render one label line, wrapping multi-line or token-rich text."""
-    # Reuse History's persistence helper to ensure compatibility.
-    from core import LabelTagParser  # noqa: E402
-
+    # The ported parser's persistence helper guarantees format compatibility.
     text = LabelTagParser.tags_to_text(tags, persistence=True)
     return f"{label}: {text}"
