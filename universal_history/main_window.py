@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import html
 import sys
+import uuid as uuid_module
 from pathlib import Path
 
 # Support running this file directly from inside the package (e.g. PyCharm's
@@ -27,15 +28,16 @@ from PyQt6.QtWidgets import (
 )
 
 from universal_history.adapters import HisFileAdapter, SaveConflictError
-from universal_history.chrono.time_utils import format_jdn
+from universal_history.chrono.time_utils import format_jdn, parse_time_text
 from universal_history.i18n import install_translator
-from universal_history.models import Workspace
+from universal_history.models import Event, Workspace
 from universal_history.render import TimelineView
 from universal_history.ui import (
     AddThreadDialog,
     BindSourceDialog,
     EventEditor,
     FilterDialog,
+    QuickEntryDialog,
     ThreadManagerDialog,
 )
 
@@ -53,6 +55,7 @@ class MainWindow(QMainWindow):
         self._view.set_workspace(self._workspace)
         self._view.itemDoubleClicked.connect(self._on_item_double_clicked)
         self._view.itemClicked.connect(self._on_item_clicked)
+        self._view.quickEntryRequested.connect(self._on_quick_entry)
         self._view.contextMenuRequested.connect(self._on_timeline_context_menu)
 
         self.setCentralWidget(self._view)
@@ -428,6 +431,60 @@ class MainWindow(QMainWindow):
         if reply == QMessageBox.StandardButton.Yes:
             self._view.remove_thread(thread)
 
+    def _save_source_or_ask(self, source: str) -> bool:
+        """Save a source with conflict detection; asks before overwriting.
+
+        Returns True when the file was written."""
+        try:
+            self._adapter.save_file(source, self._workspace.events(source))
+            return True
+        except SaveConflictError:
+            reply = QMessageBox.question(
+                self,
+                self.tr("Save Conflict"),
+                self.tr("The file changed on disk since it was loaded.\n"
+                        "Overwrite it anyway?"),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return False
+            try:
+                self._adapter.save_file(
+                    source, self._workspace.events(source), force=True
+                )
+                return True
+            except Exception as e:
+                QMessageBox.critical(self, self.tr("Save Failed"), str(e))
+                return False
+        except Exception as e:
+            QMessageBox.critical(self, self.tr("Save Failed"), str(e))
+            return False
+
+    def _on_quick_entry(self, thread, time):
+        """T5-4: one-step event creation from a thread band double-click."""
+        if not thread.source:
+            # No file bound yet: fall back to the bind-source + editor flow.
+            self._on_new_event_for_thread(
+                thread, preset_time_text=format_jdn(time)
+            )
+            return
+        dlg = QuickEntryDialog(preset_time_text=format_jdn(time), parent=self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        title, time_text = dlg.get_result()
+        since, until, _ = parse_time_text(time_text)
+        event = Event(
+            uuid=str(uuid_module.uuid4()),
+            source=thread.source,
+            since=since,
+            until=until,
+            focus_label="event",
+            labels={"time": [time_text], "title": [title]},
+        )
+        self._workspace.upsert(event)
+        if self._save_source_or_ask(thread.source):
+            self._view.reveal_time(since)
+
     def _delete_event(self, index):
         reply = QMessageBox.question(
             self,
@@ -437,29 +494,7 @@ class MainWindow(QMainWindow):
         )
         if reply == QMessageBox.StandardButton.Yes:
             self._workspace.remove(index.uuid)
-            try:
-                self._adapter.save_file(
-                    index.source, self._workspace.events(index.source)
-                )
-            except SaveConflictError:
-                reply2 = QMessageBox.question(
-                    self,
-                    self.tr("Save Conflict"),
-                    self.tr("The file changed on disk since it was loaded.\n"
-                            "Overwrite it anyway?"),
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                )
-                if reply2 == QMessageBox.StandardButton.Yes:
-                    try:
-                        self._adapter.save_file(
-                            index.source,
-                            self._workspace.events(index.source),
-                            force=True,
-                        )
-                    except Exception as e2:
-                        QMessageBox.critical(self, self.tr("Save Failed"), str(e2))
-            except Exception as e:
-                QMessageBox.critical(self, self.tr("Save Failed"), str(e))
+            self._save_source_or_ask(index.source)
 
     def _on_open_thread_manager(self):
         dlg = ThreadManagerDialog(self._view, adapter=self._adapter, parent=self)

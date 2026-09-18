@@ -64,6 +64,8 @@ class TimelineView(QWidget):
     itemClicked = pyqtSignal(EventIndex)
     itemDoubleClicked = pyqtSignal(EventIndex)
     contextMenuRequested = pyqtSignal(QPoint, object)  # global pos, optional EventIndex
+    # Thread band double-click on empty area: (ThreadLayout, JDNTimestamp) — T5-4.
+    quickEntryRequested = pyqtSignal(object, object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -545,9 +547,16 @@ class TimelineView(QWidget):
                     self.itemClicked.emit(item.event)
 
     def mouseDoubleClickEvent(self, event: QMouseEvent):
-        item = self._item_at_screen(QPointF(event.pos()))
+        pos = QPointF(event.pos())
+        item = self._item_at_screen(pos)
         if item is not None:
             self.itemDoubleClicked.emit(item.event)
+            return
+        # T5-4: double-click on an empty thread band -> quick entry with the
+        # clicked time prefilled.
+        thread = self.thread_band_at_screen(pos)
+        if thread is not None:
+            self.quickEntryRequested.emit(thread, self.time_at_screen(pos))
 
     def contextMenuEvent(self, event: QContextMenuEvent):
         pos = event.pos()
@@ -703,6 +712,18 @@ class TimelineView(QWidget):
         event creation prefills this into the editor's Time field)."""
         logical_pos = self.coord.screen_to_logical(screen_pos)
         return self.coord.logical_x_to_time(logical_pos.x())
+
+    def thread_band_at_screen(self, screen_pos: QPointF):
+        """Thread whose cross-axis band contains the point, or None.
+
+        Unlike `thread_at_screen` (which needs an item hit), this matches the
+        thread's whole band — used by quick entry on empty thread areas
+        (T5-4)."""
+        logical_pos = self.coord.screen_to_logical(screen_pos)
+        for thread in self._left_threads + self._right_threads:
+            if thread.y0 <= logical_pos.y() <= thread.y1:
+                return thread
+        return None
 
     def _item_at_screen(self, screen_pos: QPointF):
         logical_pos = self.coord.screen_to_logical(screen_pos)
