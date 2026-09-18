@@ -22,7 +22,11 @@ from universal_history.adapters import HisFileAdapter, JsonFileAdapter
 from universal_history.models import Workspace
 from universal_history.service.agent_api import create_app
 
-_WEB_DIR = Path(__file__).resolve().parent / "web"
+if getattr(sys, "frozen", False):
+    # PyInstaller bundle: data files live under sys._MEIPASS (the _internal dir).
+    _WEB_DIR = Path(sys._MEIPASS) / "universal_history" / "service" / "web"
+else:
+    _WEB_DIR = Path(__file__).resolve().parent / "web"
 
 
 def build_workspace(paths: list[str]) -> Workspace:

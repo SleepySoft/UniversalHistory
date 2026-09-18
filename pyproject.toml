@@ -14,9 +14,19 @@ dependencies = [
     "lunar_python>=1.0",
 ]
 
+[project.optional-dependencies]
+service = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+]
+
 [project.scripts]
 universal-history = "universal_history.main_window:main"
+universal-history-server = "universal_history.service.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["universal_history*"]
+
+[tool.setuptools.package-data]
+universal_history = ["translations/*.json", "service/web/*"]

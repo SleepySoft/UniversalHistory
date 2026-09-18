@@ -31,6 +31,8 @@ MANIFEST
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+# Packaging specs under packaging/ are maintained source files, keep them.
+!packaging/*.spec
 
 # Installer logs
 pip-log.txt

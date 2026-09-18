@@ -1,2 +1,7 @@
 PyQt6>=6.0,<7.0
 lunar_python>=1.0
+
+# Optional: Agent API server + web frontend
+# (pip install -e .[service] installs the same set)
+fastapi>=0.110
+uvicorn[standard]>=0.29
