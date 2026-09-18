@@ -1,12 +1,14 @@
 # WHAT · 事件编辑
 
 > HOW 细节：[../how/11-editor.md](../how/11-editor.md)。旧版对照：`history_legacy_spec/what/02-editing-and-data.md`。
+> **主从关系（用户裁决）**：新版以时间轴为主界面，编辑器是时间轴的从属对话框——只编辑单个事件、不含文件管理；保存目标由上下文确定并始终可见。设计规范见 [../how/15-timeline-centric-editing.md](../how/15-timeline-centric-editing.md) 与 [../how/14-event-ownership.md](../how/14-event-ownership.md)。
 
-## 打开方式
+## 打开方式（都从时间轴上下文发起）
 
-- 双击时间轴上的事件；
-- Thread 右键 → New event（Thread 未绑定文件时先弹 Bind Source 对话框）；
-- View → Event Editor（Ctrl+E）。
+- **双击**时间轴上的事件；
+- Thread 右键 → **New event**（Thread 未绑定文件时先弹 Bind Source 对话框——不存在「先编辑后问保存到哪」的路径）；
+- 事件上右键 → **Edit event**；
+- View → Event Editor（Ctrl+E）为辅助入口。
 
 ## 界面与字段
 
@@ -28,10 +30,12 @@
 ## 相对旧版的改进
 
 - 编辑后时间轴即时刷新（旧版从不刷新）；
+- **保存目标始终明确**：编辑已有事件写回它自己的文件；新建事件默认进当前 Thread 绑定的文件，未绑定先绑定（旧版「编辑了也不知道保存到哪」的混乱不沿用）；
 - 删除有确认（旧版无确认直接落盘）；
 - focus=time 可正常保存（旧版 bug）；
 - Tags 字段正式暴露（旧版隐藏但仍产生数据副作用）；
-- 保存不再弹「Save successful」模态框（旧版每次都弹）。
+- 保存不再弹「Save successful」模态框（旧版每次都弹）；
+- 编辑器不再内嵌 depot 文件浏览器（文件管理从编辑器剥离）。
 
 ## 已知沿用缺陷
 

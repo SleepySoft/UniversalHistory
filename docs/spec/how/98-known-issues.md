@@ -53,6 +53,8 @@
 | 30 | `ui/thread_manager.py:190` | 调 TimelineView 私有方法 `_arrange_threads()`；share spin 后缀 " %" 与 0–1 值不匹配 | 修复 |
 | 31 | `ui/filter_dialog.py:129-132` | 单端时间范围退化为点区间；三态返回值可读性差 | 修复 |
 | 32 | `ui/editor.py:295-313` | Calendar 限公元 1-9999 年；initial=None 时非当前时间 | 决策（BCE 录入的替代交互） |
+| 33 | `main_window.py:157-160` | Ctrl+E 在无 source 时打开空编辑器（"No source"，Apply 才被拦截）——应改为引导绑定/选文件 | 修复（[15-timeline-centric-editing.md](15-timeline-centric-editing.md) T4） |
+| 34 | `render/timeline_view.py` 等 | 位置感知新建（点击处时间预填）、非模态侧边编辑器、快速录入、单击展开详情 | 排期（T5 增强，[15-timeline-centric-editing.md](15-timeline-centric-editing.md)） |
 
 ## 5. 文档偏差
 

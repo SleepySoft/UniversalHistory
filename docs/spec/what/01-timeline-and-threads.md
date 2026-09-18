@@ -19,7 +19,9 @@
 - **布局**：所有事件（单点/持续）统一参与轨道分配，互不重叠；空间不足时堆叠在最外侧轨道；同一事件滚动中永远在同一列（布局稳定）。
 - **双击**事件打开编辑器；**右键**事件可 Edit / Delete。
 
-## 多线索（Thread）
+## 多线索（Thread）与轨道（Track）
+
+概念分三级：**Thread（线索）> Track（轨道）> Item（事件条）**。用户管理到 Thread 级；Track 是 Thread 内按宽度自动分出的平行轨道（布局级概念，见 [../how/07-layout.md](../how/07-layout.md) §0）。
 
 - 时间轴两侧任意多条 Thread，每条绑定一个数据源（.his 文件）或为空 Thread。
 - **添加**：右键空白处 → Add thread（加在光标所在侧），或 Thread Manager（Ctrl+M）里 Add Left / Add Right；来源三选一：现有文件 / 新建文件 / 空 Thread（默认空 Thread 一键添加）。

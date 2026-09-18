@@ -58,6 +58,8 @@ spec/
 | [11-editor.md](how/11-editor.md) | EventEditor 行为 |
 | [12-dialogs.md](how/12-dialogs.md) | Filter / ThreadManager / AddThread / BindSource 对话框 |
 | [13-interaction-spec.md](how/13-interaction-spec.md) | 交互规格：新版为准项与 Legacy 参照项 |
+| [14-event-ownership.md](how/14-event-ownership.md) | **新设计**：事件归属与文件管理（O1-O7） |
+| [15-timeline-centric-editing.md](how/15-timeline-centric-editing.md) | **新设计**：时间轴为中心的交互（T1-T5） |
 | [98-known-issues.md](how/98-known-issues.md) | 总结：已知缺陷与 TODO |
 | [99-acceptance.md](how/99-acceptance.md) | 总结：验收清单 |
 

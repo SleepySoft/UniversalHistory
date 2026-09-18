@@ -44,3 +44,8 @@
 ## 细节兜底条款
 
 新实现未覆盖的行为细节（例如解析容错的各种边角、刻度格式习惯、录入习惯），以 `history_legacy_spec/how/` 为参照标准——它是旧版行为的完整登记。冲突时以本规格（UniversalHistory 侧）为准。
+
+**兜底条款的两个例外**（用户裁决，不继承旧版、按新设计）：
+
+1. **记录归属与文件管理**——旧版「编辑了也不知道保存到哪」的混乱不沿用，按 [../how/14-event-ownership.md](../how/14-event-ownership.md) 的 O1-O7 设计；
+2. **编辑器与时间轴的主从关系**——旧版「先有编辑器、后有轴」的结构不沿用，按 [../how/15-timeline-centric-editing.md](../how/15-timeline-centric-editing.md) 的时间轴中心设计。

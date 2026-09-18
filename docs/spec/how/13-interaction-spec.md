@@ -24,7 +24,7 @@
 
 ## 2. 新版未明确、以 Legacy 规格为参照的行为细节
 
-以下行为新版未实现或未定义；若要做，**默认参照 Legacy 规格**（除非有更新决策）：
+以下行为新版未实现或未定义；若要做，**默认参照 Legacy 规格**（除非有更新决策）。注意：**记录归属/文件管理、编辑器主从关系不适用兜底条款**——它们已被新设计取代，见 [14-event-ownership.md](14-event-ownership.md) 与 [15-timeline-centric-editing.md](15-timeline-centric-editing.md)。
 
 | 行为 | Legacy 参照 | 备注 |
 | --- | --- | --- |
@@ -35,7 +35,7 @@
 | 方向键平滑滚动 | `how/10-interactions.md`（旧版坏损） | 若实现应修复而非复刻 |
 | 时间范围/缩放限制 API | `how/08-timeline-rendering.md` §3 | 未移植 |
 | 单击展开详情、密集聚簇 | `migration_analysis.md` §8.6 | 预留增强 |
-| depot 浏览器（文件重命名等） | `how/11-editor.md` §10 | 未移植 |
+| depot 浏览器（文件重命名等） | `how/11-editor.md` §10 | 未移植；**有意不带回编辑器**——文件管理从编辑器剥离（[14-event-ownership.md](14-event-ownership.md) O6） |
 | filter 预设存盘（.hisfilter） | `how/06-filter.md` | 路线图；若实现统一 utf-8 |
 | 退出确认框 | `how/12-main-window.md` §4 | 旧版唯一中文 UI；新版无——需决策是否恢复（英文文案） |
 | 未保存修改提示 | `how/11-editor.md` | 两版均无——待修复项而非参照项 |

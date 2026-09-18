@@ -2,6 +2,21 @@
 
 > 实现：`universal_history/render/layout.py`。旧版对照：`history_legacy_spec/how/09-thread-track-layout.md`；新策略决策：`migration_analysis.md` §8.5。
 
+## 0. 概念层级（正式术语）
+
+渲染与交互的概念分三级，**Track 是正式的一级**（术语表见 `migration_analysis.md` §8.4）：
+
+```
+TimelineView（控件，轴居中）
+  └── Thread（线索：绑定 source、有 align/share/配色；用户可管理）
+        └── Track（轨道：Thread 内按宽度分出的平行带；布局级概念，
+              无用户可见身份，但轨数公式、分配顺序、末轨兜底都是行为规格）
+              └── Item（事件条/chip：一个 EventIndex 的布局结果）
+```
+
+- 用户管理到 Thread 级（增删、换侧、share）；**Track 不提供用户级配置**，唯一可调参数是每轨最小宽度（`MIN_TRACK_WIDTH`）；
+- Track 的存在理由与行为规则（长优先、统一分配、末轨兜底）即本文件 §3 的算法，验收以 `tests/render_tests/test_layout.py` 为准。
+
 ## 1. 视觉常量
 
 - `POINT_EVENT_PIXEL_WIDTH = 120.0`：单点事件卡片的固定屏幕宽度（§8.6「固定长度卡片」的落地）；

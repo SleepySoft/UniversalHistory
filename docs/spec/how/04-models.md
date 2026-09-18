@@ -23,10 +23,15 @@
 
 与旧版差异：Event 是扁平 dataclass；`uuid/since/until` 升格为字段（旧版是拦截式 label）；labels 列表**保序不去重**（旧版 `add_tags` 用 set 去重会打乱顺序——旧版缺陷 #6 修复）。
 
-## 2. EventIndex（dataclass）
+## 2. EventIndex（dataclass）——简化记录，而非独立概念
 
-- 字段：`uuid`、`source`、`since`、`until`、`abstract: str`。
-- 用途：只需摘要的场景——网络传输、大列表、时间轴渲染。**内存投影，无持久化**（旧版 .index 文件管线不迁移）。
+**设计定位（用户裁决）**：EventIndex 不是与 Event 平行的另一种实体，而是**记录的简化形态**——仅保留正文之外的摘要，以减小传输尺寸。设计推论：
+
+- 字段 = `uuid`、`source`、`since`、`until`、`abstract: str`——即「指针（uuid+source）+ 时间范围 + 摘要」，正文（event 全文、brief、完整 labels）不进入；
+- 它由 Event **派生**（`to_index()` 现场计算），与 Event 同 uuid 同源，不独立存在、不持久化；
+- 用途即旧版 Index 的原始意图（`History/README.md` 概念 4）：网络传输、大列表、详情加载前的时间轴渲染——**先传简化记录，按需取完整记录**；
+- 旧版把 index 做成 focus=`index` 的特殊 HistoryRecord（附 .index 文件管线，且生成/回读均断链）——该「硬分出 index 概念」的做法废弃。
+
 - 仅有 `is_point_event()`（缺 `is_period_event`/`has_time`，已知瑕疵）。
 
 ## 3. Workspace（QObject，内存唯一数据源）
@@ -47,7 +52,7 @@
 - `sources()` / `events(source=None)`（None 摊平全部）/ `indexes(source=None)`（现场 to_index）。
 - `add(event)`：**空 source 抛 ValueError**；**不检查重复 uuid**（已知边界，测试待补）。
 - `upsert(event)`：有同 uuid 则替换（跨 source 找第一个删除后追加到 `event.source` 末尾），否则追加；按是否存在旧值发 `event_updated` 或 `event_added`。
-- `remove(uuid)`：跨所有 source 找**第一个**同 uuid 弹出（旧版删所有——差异点）；source 空则删键；发 `event_removed`；返回被删事件或 None。
+- `remove(uuid)`：跨所有 source 找**第一个**同 uuid 弹出（旧版删所有——废弃旧语义；归属设计见 [14-event-ownership.md](14-event-ownership.md) O5）；source 空则删键；发 `event_removed`；返回被删事件或 None。
 - `remove_source(source)`：整组删除，逐事件发信号；不存在则静默。
 - `clear()`：清空后对每个旧 source 发 `source_loaded`——**信号名与语义不符（疑似 bug）**，无 `source_removed` 信号。
 - `get_by_uuid(uuid)`：首个匹配或 None。

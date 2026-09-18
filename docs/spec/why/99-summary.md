@@ -65,4 +65,8 @@
 1. 时间转换不做双向精确，只保留载入阶段的解析能力（§8.1）；
 2. 桌面 local-first，Web 为可选只读/共享视图（§8.2）；
 3. Qt6 是必然选择（§8.3）；
-4. 术语统一表（Event/Index/Source/Depot/Workspace/Thread/Track/Axis，§8.4）。
+4. 术语统一表（Event/Index/Source/Depot/Workspace/Thread/Track/Axis，§8.4）；
+5. **Track 是正式概念层级**：Thread > Track > Item，Track 行为属布局规格（[../how/07-layout.md](../how/07-layout.md) §0）；
+6. **Index 是简化记录而非独立概念**：仅保留正文之外的摘要 + 指针，为减小传输尺寸而设计，由 Event 派生（[../how/04-models.md](../how/04-models.md) §2）；
+7. **不沿用旧版的归属与文件管理混乱**：事件恰好归属一个 source、归属可见、写回原 source、新建默认归属当前 Thread（[../how/14-event-ownership.md](../how/14-event-ownership.md)）；
+8. **以时间轴为主界面**：新建/编辑/删除从轴上下文发起，编辑器是轴的从属对话框（[../how/15-timeline-centric-editing.md](../how/15-timeline-centric-editing.md)）。
