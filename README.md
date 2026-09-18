@@ -70,7 +70,15 @@ UniversalHistory/
 │                               # and bind-source dialogs
 ├── tests/                      # unit tests
 └── docs/                       # design notes
+    ├── core_design.md          # time system design
+    ├── zoom_design.md          # tick / zoom design (LOD fade is pending)
+    └── spec/                   # WHY / WHAT / HOW structured spec
 ```
+
+`docs/spec/` is the authoritative behavior spec: operation logic inherits the
+legacy History project plus targeted optimizations, while the foundations
+(time, data, adapter, rendering layers) follow the new design. Behavior details
+not covered here fall back to `HistoryMigration/docs/history_legacy_spec/`.
 
 The sibling `History/` directory is kept as a reference and is used only by the
 `.his` adapter parser.
