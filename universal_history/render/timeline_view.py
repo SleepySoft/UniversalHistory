@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from PyQt6.QtCore import QPointF, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QContextMenuEvent, QFont, QMouseEvent, QWheelEvent
+from PyQt6.QtCore import QPointF, Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QColor, QContextMenuEvent, QFont, QKeyEvent, QMouseEvent, QWheelEvent
 from PyQt6.QtCore import QPoint
 from universal_history.chrono.jdn_timestamp import JDNTimestamp
 from PyQt6.QtWidgets import QApplication, QWidget
@@ -49,7 +49,9 @@ ITEM_COLORS = [
     QColor(131, 175, 155),
     QColor(255, 245, 247),
 ]
-from universal_history.render.painter import paint_axis, paint_item, paint_thread_background
+from universal_history.render.painter import (
+    item_in_time_range, paint_axis, paint_item, paint_thread_background,
+)
 
 
 
@@ -83,7 +85,15 @@ class TimelineView(QWidget):
         self._drag_last_pos: Optional[QPointF] = None
         self._hover_item: Optional[EventIndex] = None
 
+        # Arrow-key smooth scrolling (restored from legacy History main.py,
+        # whose implementation was broken — legacy defect #12).
+        self._scroll_keys: set = set()
+        self._scroll_timer = QTimer(self)
+        self._scroll_timer.setInterval(50)
+        self._scroll_timer.timeout.connect(self._on_scroll_timer)
+
         self.setMouseTracking(True)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
     # ------------------------------------------------------------------
     # Thread management
@@ -99,6 +109,7 @@ class TimelineView(QWidget):
                 self._workspace.event_updated.disconnect(self._on_event_updated)
                 self._workspace.event_removed.disconnect(self._on_event_removed)
                 self._workspace.source_loaded.disconnect(self._on_source_loaded)
+                self._workspace.source_removed.disconnect(self._on_source_removed)
             except Exception:
                 pass
         self._workspace = workspace
@@ -106,6 +117,7 @@ class TimelineView(QWidget):
         workspace.event_updated.connect(self._on_event_updated)
         workspace.event_removed.connect(self._on_event_removed)
         workspace.source_loaded.connect(self._on_source_loaded)
+        workspace.source_removed.connect(self._on_source_removed)
         if source is not None:
             self.load_source(source)
 
@@ -298,6 +310,15 @@ class TimelineView(QWidget):
         self._arrange_threads()
         self.update()
 
+    def relayout(self) -> None:
+        """Public relayout hook: recompute thread geometry and repaint.
+
+        External dialogs (e.g. ThreadManagerDialog) must call this instead of
+        the private `_arrange_threads()`.
+        """
+        self._arrange_threads()
+        self.update()
+
     def fit_to_sources(
         self, sources: Optional[List[str]] = None, padding: float = 0.05
     ) -> None:
@@ -310,10 +331,14 @@ class TimelineView(QWidget):
         if not items:
             return
 
-        min_time = min(item.since.value for item in items if item.since is not None)
-        max_time = max(item.until.value for item in items if item.until is not None)
-        if min_time >= max_time:
+        since_values = [item.since.value for item in items if item.since is not None]
+        until_values = [item.until.value for item in items if item.until is not None]
+        if not since_values or not until_values:
+            # No timed events at all: nothing meaningful to fit to.
             return
+
+        min_time = min(since_values)
+        max_time = max(until_values)
 
         vp = self.coord.viewport()
         if vp.length <= 0:
@@ -321,7 +346,8 @@ class TimelineView(QWidget):
 
         self.coord.center_time = JDNTimestamp((min_time + max_time) // 2)
         range_us = max_time - min_time
-        # Ensure at least a sensible minimum range for point-only data.
+        # Ensure at least a sensible minimum range for point-only data
+        # (including datasets where every event sits at the same instant).
         one_year_us = int(365.2425 * 24 * 3600 * 1_000_000)
         range_us = max(range_us, one_year_us)
         target_px = vp.length * (1 - 2 * padding)
@@ -434,11 +460,16 @@ class TimelineView(QWidget):
             qp, self.coord, self.axis_color, self.tick_color, self.text_color, self.tick_font
         )
 
-        # 2. Thread backgrounds and items.
+        # 2. Thread backgrounds and items (paint only what is visible —
+        # layout stays uncullable for track stability, known-issues #19).
+        start, end = self.coord.visible_time_range()
+        margin_us = int(120 / self.coord.scale) if self.coord.scale else 0
         qp.setTransform(self.coord.transform())
         for thread in self._left_threads + self._right_threads:
             paint_thread_background(qp, self.coord, thread)
             for item in thread.items:
+                if not item_in_time_range(item, start, end, margin_us):
+                    continue
                 paint_item(
                     qp,
                     self.coord,
@@ -474,7 +505,8 @@ class TimelineView(QWidget):
                 self.coord.center_time.value - delta_us
             )
             self._drag_last_pos = pos
-            self._arrange_threads()
+            # Pure panning does not change track assignment (layout is
+            # translation-invariant), so skip re-layout and just repaint.
             self.update()
         else:
             self._update_hover(pos)
@@ -513,11 +545,17 @@ class TimelineView(QWidget):
             new_center_value = mouse_time.value - logical_mouse.x() / new_scale
             self.coord.center_time = JDNTimestamp(int(new_center_value))
         else:
-            scroll_px = angle
-            delta_us = int(scroll_px / self.coord.scale)
-            self.coord.center_time = JDNTimestamp(
-                self.coord.center_time.value - delta_us
-            )
+            # Pan by a fraction of the visible span per wheel notch, so the
+            # scroll speed adapts to the current zoom level instead of being
+            # a raw pixel delta.
+            steps = angle / 120.0
+            vp = self.coord.viewport()
+            if vp.length > 0:
+                visible_us = vp.length / self.coord.scale
+                delta_us = int(steps * visible_us * 0.1)
+                self.coord.center_time = JDNTimestamp(
+                    self.coord.center_time.value - delta_us
+                )
 
         self._arrange_threads()
         self.update()
@@ -525,6 +563,59 @@ class TimelineView(QWidget):
     def resizeEvent(self, event):
         self._arrange_threads()
         super().resizeEvent(event)
+
+    # ------------------------------------------------------------------
+    # Keyboard smooth scrolling
+    # ------------------------------------------------------------------
+
+    _SCROLL_KEYS = (
+        Qt.Key.Key_Up, Qt.Key.Key_Down, Qt.Key.Key_Left, Qt.Key.Key_Right,
+    )
+
+    def keyPressEvent(self, event: QKeyEvent):
+        if event.key() in self._SCROLL_KEYS:
+            if not event.isAutoRepeat():
+                self._scroll_keys.add(event.key())
+                if not self._scroll_timer.isActive():
+                    self._scroll_timer.start()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def keyReleaseEvent(self, event: QKeyEvent):
+        if event.key() in self._SCROLL_KEYS:
+            if not event.isAutoRepeat():
+                self._scroll_keys.discard(event.key())
+                if not self._scroll_keys:
+                    self._scroll_timer.stop()
+            event.accept()
+            return
+        super().keyReleaseEvent(event)
+
+    def _on_scroll_timer(self):
+        """
+        Pan while arrow keys are held. Up/Down move a small step (5% of the
+        visible span per tick), Left/Right move a full page — matching the
+        legacy intent (small step vs page step) but speed adapts to zoom.
+        """
+        vp = self.coord.viewport()
+        if vp.length <= 0:
+            return
+        visible_us = vp.length / self.coord.scale
+        delta_us = 0
+        if Qt.Key.Key_Up in self._scroll_keys:
+            delta_us -= visible_us * 0.05
+        if Qt.Key.Key_Down in self._scroll_keys:
+            delta_us += visible_us * 0.05
+        if Qt.Key.Key_Left in self._scroll_keys:
+            delta_us -= visible_us
+        if Qt.Key.Key_Right in self._scroll_keys:
+            delta_us += visible_us
+        if delta_us:
+            self.coord.center_time = JDNTimestamp(
+                int(self.coord.center_time.value + delta_us)
+            )
+            self.update()
 
     # ------------------------------------------------------------------
     # Hover / hit testing
@@ -560,10 +651,16 @@ class TimelineView(QWidget):
 
     def _item_at_screen(self, screen_pos: QPointF):
         logical_pos = self.coord.screen_to_logical(screen_pos)
+        # Cull threads' items outside the visible range before hit-testing
+        # (known-issues #19); item_at_logical still does the precise check.
+        start, end = self.coord.visible_time_range()
+        margin_us = int(120 / self.coord.scale) if self.coord.scale else 0
         for thread in self._left_threads + self._right_threads:
-            item = thread.item_at_logical(logical_pos)
-            if item is not None:
-                return item
+            for item in thread.items:
+                if not item_in_time_range(item, start, end, margin_us):
+                    continue
+                if item.rect().contains(logical_pos):
+                    return item
         return None
 
     @staticmethod
@@ -590,10 +687,17 @@ class TimelineView(QWidget):
         self.refresh_source(event.source)
 
     def _on_event_removed(self, uuid: str):
-        # We don't know the source from the uuid alone; refresh all bound sources.
-        sources = {t.source for t in self._left_threads + self._right_threads if t.source}
-        for source in sources:
-            self.refresh_source(source)
+        # The removal signal carries only the uuid; locate the affected
+        # thread(s) via their (still stale) event lists and refresh just
+        # those sources instead of everything.
+        for thread in self._left_threads + self._right_threads:
+            if thread.source and any(e.uuid == uuid for e in thread.events):
+                self.refresh_source(thread.source)
 
     def _on_source_loaded(self, source: str):
+        self.refresh_source(source)
+
+    def _on_source_removed(self, source: str):
+        # The source is gone from the workspace; refreshing clears any
+        # thread still bound to it.
         self.refresh_source(source)

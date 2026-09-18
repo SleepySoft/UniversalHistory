@@ -17,6 +17,14 @@ AXIS_LINE_WIDTH = 2
 TICK_LENGTH = 6
 LABEL_OFFSET = 12
 
+# LOD fade thresholds (docs/zoom_design.md §3): a tick level fades in between
+# TICK_FADE_MIN_PX and TICK_FADE_FULL_PX of on-screen spacing, is the major
+# scale between FULL and DEMOTE, and demotes to a faint background scale
+# beyond TICK_DEMOTE_PX.
+TICK_FADE_MIN_PX = 50.0
+TICK_FADE_FULL_PX = 100.0
+TICK_DEMOTE_PX = 300.0
+
 # Light chip for point events; period bars use the thread's item color.
 POINT_EVENT_FILL = QColor(243, 244, 246)
 
@@ -31,8 +39,14 @@ def _format_tick_label(tick: JDNTimestamp, level: TickLevel) -> str:
         era_suffix = " BC"
 
     if level.unit == "Year":
-        if level.step_count >= 1000:
-            return f"{display_year}{era_suffix}"
+        # Deep Time: raw year numbers are meaningless at geological scales;
+        # use ka / Ma / Ga magnitude labels instead.
+        if level.step_count >= 1_000_000_000:
+            return f"{y / 1_000_000_000:g} Ga"
+        if level.step_count >= 1_000_000:
+            return f"{y / 1_000_000:g} Ma"
+        if level.step_count >= 10_000:
+            return f"{y / 1_000:g} ka"
         return f"{display_year}{era_suffix}"
 
     if level.unit == "Month":
@@ -50,23 +64,26 @@ def _format_tick_label(tick: JDNTimestamp, level: TickLevel) -> str:
     return str(tick)
 
 
-def _visible_ticks(
-    coord: CoordinateSystem, target_px: float = 120.0
-) -> Tuple[TickLevel, list]:
-    """Choose a tick level and generate ticks for the visible range."""
-    start, end = coord.visible_time_range()
-    if end <= start:
-        return TickStepper.LEVELS[-1], []
+def _tick_opacity(px_width: float) -> float:
+    """Density-driven fade (zoom_design.md §3): 0 below MIN, linear ramp to
+    FULL, 1.0 above."""
+    if px_width < TICK_FADE_MIN_PX:
+        return 0.0
+    if px_width < TICK_FADE_FULL_PX:
+        return (px_width - TICK_FADE_MIN_PX) / (TICK_FADE_FULL_PX - TICK_FADE_MIN_PX)
+    return 1.0
 
-    # target spacing in microseconds
-    target_us = target_px / coord.scale
 
-    level = TickStepper.LEVELS[-1]
-    for candidate in TickStepper.LEVELS:
-        if candidate.avg_duration_us >= target_us:
-            level = candidate
-            break
+def _tick_role(px_width: float) -> str:
+    """minor = fading-in sub-scale; major = main scale; demoted = background."""
+    if px_width < TICK_FADE_FULL_PX:
+        return "minor"
+    if px_width > TICK_DEMOTE_PX:
+        return "demoted"
+    return "major"
 
+
+def _generate_ticks(coord: CoordinateSystem, level: TickLevel, start, end) -> list:
     ticks = []
     current = TickStepper.snap_to_grid(start, level)
     safety = 0
@@ -77,7 +94,63 @@ def _visible_ticks(
         safety += 1
         if current <= start and safety > 1:
             break
+    return ticks
 
+
+def _tick_layers(coord: CoordinateSystem) -> list:
+    """
+    Compute all visible tick layers for the current zoom (known-issues #16:
+    dual-layer ticks with density-driven fade, replacing the previous
+    single-layer hard switch).
+
+    Returns a list of ``(level, ticks, alpha, role)`` ordered fine -> coarse.
+    """
+    start, end = coord.visible_time_range()
+    if end <= start:
+        return []
+
+    # Respect each level's registered visibility range (Day/Week/Month are
+    # limited to documented history, ±10000 years).
+    center_year = (start.year + end.year) // 2
+    candidates = [lv for lv in TickStepper.LEVELS if lv.is_visible(center_year)]
+    if not candidates:
+        candidates = TickStepper.LEVELS
+
+    layers = []
+    for level in candidates:
+        px = level.avg_duration_us * coord.scale
+        alpha = _tick_opacity(px)
+        if alpha <= 0:
+            continue
+        ticks = _generate_ticks(coord, level, start, end)
+        if not ticks:
+            continue
+        layers.append((level, ticks, alpha, _tick_role(px)))
+        # Coarse levels only get wider; once one is demoted, stop (anything
+        # coarser is redundant background).
+        if px > TICK_DEMOTE_PX:
+            break
+    return layers
+
+
+def _visible_ticks(
+    coord: CoordinateSystem, target_px: float = 120.0
+) -> Tuple[TickLevel, list]:
+    """Choose a tick level and generate ticks for the visible range.
+
+    Kept as the single-layer compatibility view: returns the major layer of
+    `_tick_layers` (the finest fully-visible level).
+    """
+    layers = _tick_layers(coord)
+    if not layers:
+        return TickStepper.LEVELS[-1], []
+    for level, ticks, alpha, role in layers:
+        if role == "major":
+            return level, ticks
+        if role == "demoted":
+            return level, ticks
+    # Only fading-in minors: fall back to the finest available.
+    level, ticks, _, _ = layers[0]
     return level, ticks
 
 
@@ -89,7 +162,13 @@ def paint_axis(
     text_color: QColor,
     font: QFont,
 ) -> None:
-    """Paint the central axis line and tick labels."""
+    """Paint the central axis line and tick labels.
+
+    Renders all visible tick layers (zoom_design.md): coarse layers first as
+    background, then finer layers on top. Minor (fading-in) layers draw short
+    ticks without labels; major layers draw full ticks and labels; demoted
+    layers stay as faint background scales.
+    """
     vp = coord.viewport()
     half_len = vp.length / 2
 
@@ -97,36 +176,78 @@ def paint_axis(
     qp.setPen(QPen(axis_color, AXIS_LINE_WIDTH))
     qp.drawLine(QPointF(-half_len, 0), QPointF(half_len, 0))
 
-    level, ticks = _visible_ticks(coord)
+    layers = _tick_layers(coord)
 
-    qp.setPen(QPen(tick_color, 1))
-    for tick in ticks:
-        x = coord.time_to_logical_x(tick)
-        qp.drawLine(QPointF(x, -TICK_LENGTH), QPointF(x, TICK_LENGTH))
+    def _faded(color: QColor, alpha: float) -> QColor:
+        c = QColor(color)
+        c.setAlphaF(max(0.0, min(1.0, alpha)))
+        return c
 
-    # Labels are drawn in screen coordinates so they stay upright.
+    # 1. Tick marks, coarse (background) -> fine (foreground).
+    for level, ticks, alpha, role in reversed(layers):
+        if role == "minor":
+            length = TICK_LENGTH / 2
+            layer_alpha = alpha
+        elif role == "demoted":
+            length = TICK_LENGTH * 1.5
+            layer_alpha = 0.3  # strategy A: faded background reference
+        else:
+            length = TICK_LENGTH
+            layer_alpha = alpha
+        qp.setPen(QPen(_faded(tick_color, layer_alpha), 1))
+        for tick in ticks:
+            x = coord.time_to_logical_x(tick)
+            qp.drawLine(QPointF(x, -length), QPointF(x, length))
+
+    # 2. Labels in screen coordinates so they stay upright; only major and
+    # demoted (watermark) layers get labels.
+    qp.save()
     qp.resetTransform()
     qp.setFont(font)
-    qp.setPen(text_color)
     fm = QFontMetrics(font)
 
-    for tick in ticks:
-        x = coord.time_to_logical_x(tick)
-        # Place labels on the side of the axis that is not covered by threads
-        # (above in horizontal mode, to the right in vertical mode).
-        screen_pos = coord.logical_to_screen(QPointF(x, -LABEL_OFFSET))
-        text = _format_tick_label(tick, level)
+    for level, ticks, alpha, role in reversed(layers):
+        if role == "minor":
+            continue
+        label_alpha = alpha if role == "major" else 0.3
+        qp.setPen(_faded(text_color, label_alpha))
+        for tick in ticks:
+            x = coord.time_to_logical_x(tick)
+            # Place labels on the side of the axis that is not covered by
+            # threads (above in horizontal mode, to the right in vertical).
+            screen_pos = coord.logical_to_screen(QPointF(x, -LABEL_OFFSET))
+            text = _format_tick_label(tick, level)
 
-        if coord.is_vertical:
-            # In vertical mode the label sits to the right of the tick.
-            draw_x = screen_pos.x() + 4
-            draw_y = screen_pos.y() + fm.ascent() / 2
-        else:
-            text_width = fm.horizontalAdvance(text)
-            draw_x = screen_pos.x() - text_width / 2
-            draw_y = screen_pos.y() + fm.ascent()
+            if coord.is_vertical:
+                draw_x = screen_pos.x() + 4
+                draw_y = screen_pos.y() + fm.ascent() / 2
+            else:
+                text_width = fm.horizontalAdvance(text)
+                draw_x = screen_pos.x() - text_width / 2
+                draw_y = screen_pos.y() + fm.ascent()
 
-        qp.drawText(QPointF(draw_x, draw_y), text)
+            qp.drawText(QPointF(draw_x, draw_y), text)
+
+    # Restore the logical transform explicitly (no implicit contract).
+    qp.restore()
+
+
+def item_in_time_range(item: ItemLayout, start, end, margin_us: int = 0) -> bool:
+    """
+    Visibility culling predicate (known-issues #19).
+
+    Only painting/hit-testing should cull — layout deliberately processes all
+    events so track assignment stays stable while panning. ``margin_us``
+    expands the range so point-event cards centered just outside the viewport
+    are still drawn.
+    """
+    ev = item.event
+    if ev.since is None or ev.until is None:
+        return True
+    if margin_us:
+        start = JDNTimestamp(start.value - margin_us)
+        end = JDNTimestamp(end.value + margin_us)
+    return not (ev.until < start or ev.since > end)
 
 
 def paint_thread_background(
