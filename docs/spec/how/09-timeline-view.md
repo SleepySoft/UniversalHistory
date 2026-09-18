@@ -44,7 +44,7 @@
 
 ## 6. 悬停与命中
 
-- `_update_hover`：命中新 item → 记 `_hover_item`、setToolTip、重绘；离开清空。**Qt 原生 Tooltip**（取代旧版自绘十字线 + 蓝色提示框）；持续事件的「第N年/共M年」进度提示**已移植**（2026-09-18，F1）：按光标所在年份显示 "Year N of M"（天文纪年差值，钳入事件区间，跨年界正确），光标在事件内移动跨年即刷新。
+- `_update_hover`：命中 item 即 `QToolTip.showText` **主动弹出跟随光标的提示框**（2026-09-19 恢复旧版跟随行为——此前用 widget toolTip 属性被动弹出，光标须停留约 1 秒才出现，用户感知为「悬浮提示没有」，known-issues #39）；移出 item 或离开控件时 `hideText`；拖动开始时隐藏。**Qt 原生 Tooltip**（取代旧版自绘十字线 + 蓝色提示框）；持续事件的「第N年/共M年」进度提示**已移植**（2026-09-18，F1）：按光标所在年份显示 "Year N of M"（天文纪年差值，钳入事件区间，跨年界正确），光标在事件内移动跨年即刷新。
 - `_tooltip_text`：`"{year} {era}-MM-DD"`（era 为 BC/AD 后缀）；单点 → `时间\n摘要`；持续 → `起 ~ 止\n摘要`。
 - 命中链：屏幕点 → `screen_to_logical` → 各 Thread `item_at_logical`（逆序，chip 优先）。
 - `side_at_screen` 按轴中心线判左右（纵向比 x、横向比 y）；供右键菜单定 Add Thread 的侧。

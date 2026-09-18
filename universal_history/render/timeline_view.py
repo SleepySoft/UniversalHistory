@@ -13,7 +13,7 @@ from PyQt6.QtCore import QCoreApplication, QPointF, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QContextMenuEvent, QFont, QKeyEvent, QMouseEvent, QWheelEvent
 from PyQt6.QtCore import QPoint
 from universal_history.chrono.jdn_timestamp import JDNTimestamp
-from PyQt6.QtWidgets import QApplication, QWidget
+from PyQt6.QtWidgets import QApplication, QToolTip, QWidget
 
 from universal_history.models import Event, EventIndex, Workspace
 from universal_history.render.geometry import AXIS_BREADTH, CoordinateSystem
@@ -526,6 +526,7 @@ class TimelineView(QWidget):
 
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:
+            QToolTip.hideText()
             self._drag_last_pos = QPointF(event.pos())
             self._press_pos = QPointF(event.pos())
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
@@ -684,7 +685,7 @@ class TimelineView(QWidget):
             if self._hover_item is not None:
                 self._hover_item = None
                 self._hover_year = None
-                self.setToolTip("")
+                QToolTip.hideText()
                 self.update()
             return
 
@@ -694,11 +695,27 @@ class TimelineView(QWidget):
             hover_time = self.coord.logical_x_to_time(logical_pos.x())
             hover_year = hover_time.to_gregorian()[0]
 
+        text = self._tooltip_text(item.event, hover_year)
         if self._hover_item != item.event or hover_year != self._hover_year:
             self._hover_item = item.event
             self._hover_year = hover_year
-            self.setToolTip(self._tooltip_text(item.event, hover_year))
             self.update()
+        # Legacy behaviour: the tooltip follows the cursor and appears
+        # immediately while moving (a passive widget toolTip property would
+        # only pop up after the cursor rests ~1s — users read that as "hover
+        # info is broken"). Re-show on every move so the popup tracks the
+        # cursor and the "Year N of M" progress stays live.
+        global_pos = self.mapToGlobal(screen_pos.toPoint()) + QPoint(14, 14)
+        QToolTip.showText(global_pos, text, self)
+
+    def leaveEvent(self, event):
+        # Hide the following tooltip when the cursor leaves the view.
+        if self._hover_item is not None:
+            self._hover_item = None
+            self._hover_year = None
+            self.update()
+        QToolTip.hideText()
+        super().leaveEvent(event)
 
     @classmethod
     def _period_progress(cls, event: EventIndex, hover_year: int) -> str:
