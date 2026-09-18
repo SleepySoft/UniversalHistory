@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from PyQt6.QtCore import QPointF, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QCoreApplication, QPointF, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QContextMenuEvent, QFont, QKeyEvent, QMouseEvent, QWheelEvent
 from PyQt6.QtCore import QPoint
 from universal_history.chrono.jdn_timestamp import JDNTimestamp
@@ -84,6 +84,9 @@ class TimelineView(QWidget):
 
         self._drag_last_pos: Optional[QPointF] = None
         self._hover_item: Optional[EventIndex] = None
+        # Year under the cursor for the period-progress tooltip ("Year N of M");
+        # tracked so the tooltip refreshes as the cursor moves within one item.
+        self._hover_year: Optional[int] = None
 
         # Arrow-key smooth scrolling (restored from legacy History main.py,
         # whose implementation was broken — legacy defect #12).
@@ -623,16 +626,37 @@ class TimelineView(QWidget):
 
     def _update_hover(self, screen_pos: QPointF):
         item = self._item_at_screen(screen_pos)
-        if item is not None:
-            if self._hover_item != item.event:
-                self._hover_item = item.event
-                self.setToolTip(self._tooltip_text(item.event))
-                self.update()
-        else:
+        if item is None:
             if self._hover_item is not None:
                 self._hover_item = None
+                self._hover_year = None
                 self.setToolTip("")
                 self.update()
+            return
+
+        hover_year = None
+        if not item.event.is_point_event():
+            logical_pos = self.coord.screen_to_logical(screen_pos)
+            hover_time = self.coord.logical_x_to_time(logical_pos.x())
+            hover_year = hover_time.to_gregorian()[0]
+
+        if self._hover_item != item.event or hover_year != self._hover_year:
+            self._hover_item = item.event
+            self._hover_year = hover_year
+            self.setToolTip(self._tooltip_text(item.event, hover_year))
+            self.update()
+
+    @classmethod
+    def _period_progress(cls, event: EventIndex, hover_year: int) -> str:
+        """Legacy-style period progress at the cursor: 'Year N of M'
+        (legacy showed 「第N年/共M年」). Year math uses astronomical years;
+        the cursor position is clamped into the event's range."""
+        since_year = event.since.to_gregorian()[0]
+        until_year = event.until.to_gregorian()[0]
+        total = until_year - since_year + 1
+        current = min(max(hover_year, since_year), until_year) - since_year + 1
+        return QCoreApplication.translate("TimelineView", "Year %1 of %2") \
+            .replace("%1", str(current)).replace("%2", str(total))
 
     def thread_at_screen(self, screen_pos: QPointF) -> Optional[ThreadLayout]:
         """Return the thread whose item is under the screen point, or None."""
@@ -663,8 +687,8 @@ class TimelineView(QWidget):
                     return item
         return None
 
-    @staticmethod
-    def _tooltip_text(event: EventIndex) -> str:
+    @classmethod
+    def _tooltip_text(cls, event: EventIndex, hover_year: Optional[int] = None) -> str:
         y, m, d, *_ = event.since.to_gregorian()
         era = "BC" if y <= 0 else "AD"
         display_year = -(y - 1) if y <= 0 else y
@@ -674,7 +698,10 @@ class TimelineView(QWidget):
         ye, me, de, *_ = event.until.to_gregorian()
         era_e = "BC" if ye <= 0 else "AD"
         display_year_e = -(ye - 1) if ye <= 0 else ye
-        return f"{time_text} ~ {display_year_e} {era_e}-{me:02d}-{de:02d}\n{event.abstract}"
+        text = f"{time_text} ~ {display_year_e} {era_e}-{me:02d}-{de:02d}\n{event.abstract}"
+        if hover_year is not None:
+            text += f"\n{cls._period_progress(event, hover_year)}"
+        return text
 
     # ------------------------------------------------------------------
     # Workspace slots
