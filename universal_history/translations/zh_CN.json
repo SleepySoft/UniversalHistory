@@ -130,6 +130,9 @@
   "Event Details": "事件详情",
   "Quick Entry": "快速录入",
   "Title is required.": "标题必填。",
+  "Year / Month / Day": "年 / 月 / 日",
+  "BC (year %1)": "公元前 %1 年",
+  "Invalid date: %1": "无效日期：%1",
   "UniversalHistory — infinite timeline viewer\n\nNavigation:\n  - Drag with the left mouse button to pan.\n  - Mouse wheel pans; Ctrl + wheel zooms around the cursor.\n  - Arrow keys scroll smoothly (Up/Down: small steps, Left/Right: pages).\n  - Ctrl+0 fits all loaded data; Ctrl+T toggles horizontal/vertical.\n\nEvents:\n  - Double-click an event to edit it.\n  - Right-click for the context menu (add thread, new event, delete).\n  - Ctrl+E opens the event editor; Ctrl+L opens the filter dialog.\n\nTime text accepts natural language such as \"300 BC\", \"公元前200年\",\n\"2030-05-01\" or ranges like \"公元前300年 - 公元前200年\".": "UniversalHistory —— 无限时间轴查看器\n\n导航：\n  - 按住鼠标左键拖动平移。\n  - 滚轮平移；Ctrl + 滚轮以光标为中心缩放。\n  - 方向键平滑滚动（上/下：小步滚动，左/右：翻页）。\n  - Ctrl+0 适配全部已加载数据；Ctrl+T 切换横/纵布局。\n\n事件：\n  - 双击事件进行编辑。\n  - 右键打开上下文菜单（添加线索、新建事件、删除）。\n  - Ctrl+E 打开事件编辑器；Ctrl+L 打开过滤器。\n\n时间文本支持自然语言，如 \"300 BC\"、\"公元前200年\"、\n\"2030-05-01\"，以及区间 \"公元前300年 - 公元前200年\"。",
   "UniversalHistory\n\nAn infinite historical timeline built on a single proleptic-Gregorian\nJDN timestamp model (astronomical year numbering, year 0 = 1 BC).\n\nA PyQt6 re-implementation of the legacy History project.": "UniversalHistory\n\n基于单一前推公历 JDN 时间戳模型的无限历史时间轴\n（天文纪年，0 年 = 公元前 1 年）。\n\n旧版 History 项目的 PyQt6 重实现。"
 }

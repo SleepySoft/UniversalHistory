@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
 from universal_history.adapters import HisFileAdapter, SaveConflictError
 from universal_history.chrono import parse_time_text, format_jdn, jdn_to_qdatetime, qdatetime_to_jdn
 from universal_history.models import Event, Workspace
+from universal_history.ui.astro_date_dialog import AstroDatePickerDialog
 
 
 class DateTimePickerDialog(QDialog):
@@ -431,10 +432,11 @@ class EventEditor(QWidget):
 
         qdt = jdn_to_qdatetime(since)
         if qdt is None:
-            QMessageBox.information(
-                self, self.tr("Out of Range"),
-                self.tr("Calendar picker only supports years 1-9999."),
-            )
+            # Outside the Qt calendar's 1-9999 range: use the hand-rolled
+            # astronomical (BCE-capable) picker (decision phase 2).
+            dlg = AstroDatePickerDialog(since, parent=self)
+            if dlg.exec() == QDialog.DialogCode.Accepted:
+                self._line_time.setText(format_jdn(dlg.selected()))
             return
 
         dlg = DateTimePickerDialog(qdt, self)
