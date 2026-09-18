@@ -49,16 +49,16 @@
 | 旧版（48 档 STEP_LIST） | 新版 | 说明 |
 | --- | --- | --- |
 | 主/副刻度六元组 offset 对 | LOD 多层（minor/major/demoted） | **已换代（P9）**：副刻度由密度淡入的 minor 层承担；六元组 offset 对不移植 |
-| 年→月→周→日→时递进 | Day/Week/Month/Quarter/Year 层级 | 继承递进思想；注意新版最小层是「日」（时/分/秒层未注册） |
+| 年→月→周→日→时递进 | Minute/Hour/Day/Week/Month/Quarter/Year 层级 | 继承递进思想；时/分/秒层级已于 F8 注册 |
 | 刻度推进 `offset_ad_second`（显式无 0 年修正） | `get_next_tick` 日历运算 | 优化：天文纪年天然连续 |
 | MAIN_SCALE_MIN_PIXEL=50 | target_px=120 | 密度驱动思想继承，阈值与策略换代 |
 | 上限 1000 万年 | 50 亿年（Deep Time） | 扩展 |
 | BC 前缀（`BC 500`） | BC 后缀（`500 BC`） | 风格变化 |
 
-## 6. LOD 多层刻度（zoom_design.md 核心机制，P9 已实现部分）
+## 6. LOD 多层刻度（zoom_design.md 核心机制，P9 + F8 已全部实现）
 
 - ~~多层层叠绘制 + 透明度淡入淡出~~ **已实现（2026-09-18，P9）**：`painter._tick_layers` 按细→粗生成多层刻度；密度驱动淡入淡出——间距 <50px 不画，50–100px 线性淡入（minor，半长刻度无标签），100–300px 为主刻度（major），>300px 降为 30% 透明背景层（demoted，遇 demoted 即停止更粗层）；回归测试 `tests/render_tests/test_tick_layers.py`。
 - ~~主/副刻度样式~~ 已实现：minor 半长刻度无标签、major 全长带标签、demoted 淡色背景。
-- 仍**未实现**：
-  - 三级显示降级（近代全显 / 史前仅年份 / 远古转 BP 格式，`core_design.md` §5.2）；
-  - 时/分/秒层级（旧版有 1 天主刻度 → 副 4/2/1 小时档）。
+- ~~仍**未实现**：~~ **均已实现（2026-09-18，F8）**：
+  - ~~三级显示降级（近代全显 / 史前仅年份 / 远古转 BP 格式，`core_design.md` §5.2）~~ ——已实现：史前刻度标签降为仅年份、远古（约定阈值外）转 BP（Before Present，以 1950 为基准）格式；
+  - ~~时/分/秒层级（旧版有 1 天主刻度 → 副 4/2/1 小时档）~~ ——已实现：Hour/Minute 层级注册进 LEVELS，「日」以下继续递进。

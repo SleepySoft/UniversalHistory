@@ -60,6 +60,7 @@ spec/
 | [13-interaction-spec.md](how/13-interaction-spec.md) | 交互规格：新版为准项与 Legacy 参照项 |
 | [14-event-ownership.md](how/14-event-ownership.md) | **新设计**：事件归属与文件管理（O1-O7） |
 | [15-timeline-centric-editing.md](how/15-timeline-centric-editing.md) | **新设计**：时间轴为中心的交互（T1-T5） |
+| [16-agent-api.md](how/16-agent-api.md) | **新设计**：Agent API（REST/WS）与 Web 前端契约（F10/F11） |
 | [98-known-issues.md](how/98-known-issues.md) | 总结：已知缺陷与 TODO |
 | [99-acceptance.md](how/99-acceptance.md) | 总结：验收清单 |
 

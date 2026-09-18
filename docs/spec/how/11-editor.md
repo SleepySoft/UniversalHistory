@@ -33,7 +33,7 @@
 - **回填还原 focus radio**（旧版不还原——修复）。
 - **下拉框**：按 since 升序；文本 `[format_jdn] abstract(30)`（旧版显示 uuid）；无时间显示 "?" 排最前。
 - **Open File / New File**：depot 根对话框；New File 写空文件。
-- **Calendar**：需先有可解析时间（否则 "No Time"）；限公元 1-9999 年（否则 "Out of Range"）；DateTimePickerDialog 格式 `yyyy-MM-dd HH:mm:ss`、calendarPopup；initial=None 时为 Qt 默认值（旧版默认当前系统时间——差异）。
+- **Calendar**：需先有可解析时间（否则 "No Time"）；公元 1-9999 年用 Qt `DateTimePickerDialog`（格式 `yyyy-MM-dd HH:mm:ss`、calendarPopup）；超出该范围（含 BCE）的日期（旧版报 "Out of Range"）**自 F7 起路由到 `AstroDatePickerDialog`**——自绘年/月/日控件，天文纪年（0=公元前1年）支持 BCE 与任意年表范围；initial=None 时为 Qt 默认值（旧版默认当前系统时间——差异）。
 - **时间输入反馈**：输入框 tooltip 实时显示 `Parsed: ...` / `Cannot parse time`（旧版是悬浮 QToolTip 弹窗跟随——降级为 tooltip 属性）。
 
 ## 5. EventEditorDialog

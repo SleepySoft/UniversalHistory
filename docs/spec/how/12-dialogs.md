@@ -38,6 +38,16 @@
 - 仅 Load existing file / Create new source file / Cancel（**无 Empty 选项**）；成功后直接 accept。
 - 调用场景：Thread 无 source 时右键 New event 的前置步骤。
 
-## 5. 文本约定
+## 5. QuickEntryDialog（Quick entry，F6）
+
+- Thread 右键 → Quick entry 弹出；标题 + 自然语言时间两个字段一步成事件，位置感知预填点击处轴时间；
+- 完整字段（labels、正文等）留给 EventEditor / 侧边编辑器。
+
+## 6. AstroDatePickerDialog（F7）
+
+- 自绘年/月/日控件：天文纪年（0 = 公元前 1 年，负年 = 更早 BCE），支持公元 1-9999 之外的 BCE 与远期日期；
+- 由编辑器 Calendar 按钮对超 Qt 范围的日期路由进入（见 `11-editor.md` §4）。
+
+## 7. 文本约定
 
 UI 用户可见文本以英文为源语言，全部经 `tr()` 包裹；i18n 由 `universal_history/i18n.py`（JsonTranslator）+ `translations/zh_CN.json` 提供中文翻译，语言解析顺序：显式参数 > `UH_LANGUAGE` 环境变量 > 系统 locale（#29 起接入，P11 补齐全部新文案）。

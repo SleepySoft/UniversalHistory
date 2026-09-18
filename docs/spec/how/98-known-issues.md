@@ -4,6 +4,7 @@
 > 2026-09-18 批量修复：#9–#12、#14、#15、#17、#18、#21–#31、#33 已完成并回归（105 测试全过）。
 > 2026-09-18 P4 解析器解耦：#5、#7、#8 完成——`.his` 解析器移植进 `universal_history/parsing/`，不再对 sibling `History/` 做代码级依赖（125 测试全过）。
 > 2026-09-18 P5–P10 批量收尾：#1–#4、#6、#13、#16、#19 已完成并回归（158 测试全过）；UI 补全 Help/About、Label Tag Editor、filter 预设、方向键平滑滚动；「世纪」区间解析改进（顺带修复闰年末日回读 bug，见 §6 #37）。
+> 2026-09-18 F1–F12 全功能迁移收尾：#32、#34 清零（BCE 控件 F7、T5-3/T5-4 即 F5/F6）；刻度三级降级与时/分/秒层级（F8）、JSON Adapter（F9）、Agent API（F10）、Web 前端（F11）、PyInstaller 打包配置（F12）全部交付（216 测试全过）。
 
 ## 1. 数据与适配层
 
@@ -55,9 +56,9 @@
 | 29 | `main_window.py` | ~~无退出确认（旧版有中文确认框）~~ | **已修复（2026-09-18）**：`closeEvent` 恢复退出确认；i18n 骨架已接入（`i18n.py` + `translations/zh_CN.json`，英文源文案） |
 | 30 | `ui/thread_manager.py` | ~~调 TimelineView 私有方法 `_arrange_threads()`；share spin 后缀 " %" 与 0–1 值不匹配~~ | **已修复（2026-09-18）**：新增 `TimelineView.relayout()` 公开方法；去掉 " %" 后缀 |
 | 31 | `ui/filter_dialog.py` | ~~单端时间范围退化为点区间；三态返回值可读性差~~ | **已修复（2026-09-18）**：开口区间（None 端无界），`Workspace.select` 支持 None 端；三态返回值改为抛 ValueError |
-| 32 | `ui/editor.py` | Calendar 限公元 1-9999 年；initial=None 时非当前时间 | **已定（2026-09-18）**：分两阶段——先保持自然语言文本 + Calendar 服务近期/公元后日期（日记场景），自绘 BCE 年/月/日控件排期后期。第一阶段已完成（ISO 快路径使文本录入可靠回读，见 §6 #35） |
+| 32 | ~~`ui/editor.py`~~ | ~~Calendar 限公元 1-9999 年；initial=None 时非当前时间~~ | **已完成（2026-09-18，F7）**：第二阶段落地——自绘 `AstroDatePickerDialog` 年/月/日控件支持天文纪年 BCE（0=公元前1年）与 1582 年格里高利历切换之外的全年表范围；编辑器「Out of Range」日期路由到该控件；第一阶段（自然语言文本 + Calendar 近期日期，ISO 快路径回读，见 §6 #35）保留 |
 | 33 | `main_window.py` | ~~Ctrl+E 在无 source 时打开空编辑器~~ | **已修复（2026-09-18）**：无 source 时弹出引导（打开文件 / 新建文件 / 取消），选定后再进编辑器 |
-| 34 | ~~`render/timeline_view.py` 等~~ | ~~位置感知新建（点击处时间预填）、非模态侧边编辑器、快速录入、单击展开详情~~ | **部分完成（2026-09-18，F2/F3/F4）**：位置感知新建、保存后视图跳转、单击展开详情面板已实现；非模态侧边编辑器与快速录入仍排期（[15-timeline-centric-editing.md](15-timeline-centric-editing.md) T5-3/T5-4） |
+| 34 | ~~`render/timeline_view.py` 等~~ | ~~位置感知新建（点击处时间预填）、非模态侧边编辑器、快速录入、单击展开详情~~ | **已全部完成（2026-09-18，F2–F6）**：位置感知新建、保存后视图跳转、单击展开详情面板（F2/F3/F4）；非模态侧边编辑器 `EventEditorDock`（F5，隐藏不清空未保存内容）、快速录入 `QuickEntryDialog`（F6，标题+时间一步成事件）均已实现（[15-timeline-centric-editing.md](15-timeline-centric-editing.md) T5 全绿） |
 
 ## 5. 文档偏差
 

@@ -32,6 +32,14 @@
   6. 结尾补换行。
 - **仍未实现**：错误码（旧版 `E_*` 常量）、只读/Web source 拒绝逻辑（当前无此类 source 类型，登记为预留）。
 
+## 5. JsonFileAdapter（F9，第二持久化格式）
+
+> 实现：`universal_history/adapters/json_adapter.py`。
+
+- Schema `universal-history/v1`；事件字段 uuid/source/focus_label/since/until/labels 全量保留，`since`/`until` 直接存 JDN 微秒整数（无自然语言回读损耗）；
+- 与 `HisFileAdapter` 共享 `FileFingerprints`（`adapters/fingerprint.py`）做保存冲突检测；
+- Agent API 服务端按扩展名分流：`.json` 走 JsonFileAdapter，其余走 HisFileAdapter；数据库/网络 Adapter 仍为设计预留。
+
 ## 4. 兼容验证（测试锁定，tests/test_his_adapter.py）
 
 - `example.his` 加载得 6 个事件；首事件 BC3000 点事件、focus=event、title 含 "Hi-Story Example"、`since.year == -2999`（天文纪年）；第三事件 2030 AD；
