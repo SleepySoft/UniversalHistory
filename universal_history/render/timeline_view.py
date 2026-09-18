@@ -322,6 +322,17 @@ class TimelineView(QWidget):
         self._arrange_threads()
         self.update()
 
+    def reveal_time(self, ts: JDNTimestamp) -> None:
+        """Center the view on `ts` when it lies outside the visible range
+        (T5-2: after a new event is saved, the view jumps to it — but does
+        not move when the event is already on screen, e.g. position-aware
+        creation at the clicked spot)."""
+        start, end = self.coord.visible_time_range()
+        if start.value <= ts.value <= end.value:
+            return
+        self.coord.center_time = ts
+        self.update()
+
     def fit_to_sources(
         self, sources: Optional[List[str]] = None, padding: float = 0.05
     ) -> None:

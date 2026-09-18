@@ -267,7 +267,14 @@ class MainWindow(QMainWindow):
             self._workspace, source=source, edit_uuid=edit_uuid, parent=self,
             preset_time_text=preset_time_text,
         )
+        # T5-2: after a save, reveal the event on the timeline (no-op when it
+        # is already visible, e.g. position-aware creation at the clicked spot).
+        dlg.editor.event_saved.connect(self._on_editor_event_saved)
         dlg.exec()
+
+    def _on_editor_event_saved(self, event):
+        if event.since is not None:
+            self._view.reveal_time(event.since)
 
     def _on_item_double_clicked(self, index):
         self._open_editor(index.source, edit_uuid=index.uuid)
