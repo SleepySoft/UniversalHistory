@@ -46,6 +46,14 @@ class CoordinateSystem:
         one_year_us = 365.2425 * 24 * 3600 * 1_000_000
         self.scale = 200.0 / one_year_us  # px / us
 
+        # Layout anchor: logical X coordinates cached by ThreadLayout are
+        # relative to this time, NOT to center_time.  Panning only changes
+        # center_time; the resulting drift is applied inside transform() so
+        # cached item geometry moves with the axis without re-layout.  The
+        # anchor is re-synced to center_time on every arrange (zoom, resize,
+        # data change, or large-drift re-anchor in the view).
+        self._anchor_time = self.center_time
+
         # Axis offset within the available transverse space.
         # 0.0 -> axis at the near edge (left/top side gets 0 space).
         # 0.5 -> axis centered (default).
@@ -81,13 +89,26 @@ class CoordinateSystem:
     # Time <-> logical coordinate
     # ------------------------------------------------------------------
 
+    @property
+    def anchor_time(self) -> JDNTimestamp:
+        """Time the cached layout coordinates are relative to."""
+        return self._anchor_time
+
+    def set_anchor(self, ts: JDNTimestamp) -> None:
+        """Re-sync the layout anchor (call whenever the layout is recomputed)."""
+        self._anchor_time = ts
+
+    def center_logical_x(self) -> float:
+        """Logical X of the current view centre (0 right after an arrange)."""
+        return (self.center_time.value - self._anchor_time.value) * self.scale
+
     def time_to_logical_x(self, ts: JDNTimestamp) -> float:
-        """Return logical X coordinate for a JDNTimestamp."""
-        return (ts.value - self.center_time.value) * self.scale
+        """Return logical X coordinate for a JDNTimestamp (anchor-relative)."""
+        return (ts.value - self._anchor_time.value) * self.scale
 
     def logical_x_to_time_value(self, x: float) -> int:
         """Return the raw microsecond value corresponding to logical X."""
-        return int(self.center_time.value + x / self.scale)
+        return int(self._anchor_time.value + x / self.scale)
 
     def logical_x_to_time(self, x: float) -> JDNTimestamp:
         return JDNTimestamp(self.logical_x_to_time_value(x))
@@ -123,13 +144,19 @@ class CoordinateSystem:
         size = self.widget_size()
         t = QTransform()
         axis_center = self.axis_screen_center()
+        # Pan drift: cached layout coordinates are anchor-relative, so the
+        # transform must shift logical X by (anchor - center) * scale to make
+        # items follow the axis while panning without re-layout.
+        dx = (self._anchor_time.value - self.center_time.value) * self.scale
         if self.is_vertical:
             # Time axis runs vertically; the transverse axis is horizontal.
             t.translate(axis_center, size.height() / 2)
             t.rotate(90)
+            # Applied before the rotation: shifts along the logical time axis.
+            t.translate(dx, 0)
         else:
             # Time axis runs horizontally; the transverse axis is vertical.
-            t.translate(size.width() / 2, axis_center)
+            t.translate(size.width() / 2 + dx, axis_center)
         return t
 
     def logical_to_screen(self, p: QPointF) -> QPointF:

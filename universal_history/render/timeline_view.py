@@ -334,8 +334,7 @@ class TimelineView(QWidget):
         start, end = self.coord.visible_time_range()
         if start.value <= ts.value <= end.value:
             return
-        self.coord.center_time = ts
-        self.update()
+        self._set_center_time(ts)
 
     def fit_to_sources(
         self, sources: Optional[List[str]] = None, padding: float = 0.05
@@ -423,11 +422,33 @@ class TimelineView(QWidget):
         self.update()
 
     # ------------------------------------------------------------------
+    # Panning
+    # ------------------------------------------------------------------
+
+    # Re-anchor threshold: when the layout anchor drifts more than this many
+    # viewport lengths from the view centre, re-arrange (re-anchor) so cached
+    # logical coordinates stay small enough for the raster engine.
+    _REANCHOR_VIEWPORTS = 4
+
+    def _set_center_time(self, ts: JDNTimestamp) -> None:
+        """Pan the view. Pure panning is a transform shift (no re-layout —
+        known-issues #21); the anchor is only re-synced when the drift grows
+        large enough to risk coordinate-range issues."""
+        self.coord.center_time = ts
+        vp = self.coord.viewport()
+        if vp.length > 0 and abs(self.coord.center_logical_x()) > vp.length * self._REANCHOR_VIEWPORTS:
+            self._arrange_threads()
+        self.update()
+
+    # ------------------------------------------------------------------
     # Layout
     # ------------------------------------------------------------------
 
     def _arrange_threads(self) -> None:
         """Recompute transverse ranges and track layouts for all threads."""
+        # Layout caches anchor-relative coordinates; re-sync the anchor so a
+        # fresh layout is consistent with the current view centre.
+        self.coord.set_anchor(self.coord.center_time)
         vp = self.coord.viewport()
         left_budget, right_budget = self.coord.thread_budgets()
         half_len = vp.length / 2
@@ -520,13 +541,13 @@ class TimelineView(QWidget):
             else:
                 delta_screen = pos.x() - self._drag_last_pos.x()
             delta_us = int(delta_screen / self.coord.scale)
-            self.coord.center_time = JDNTimestamp(
-                self.coord.center_time.value - delta_us
-            )
-            self._drag_last_pos = pos
             # Pure panning does not change track assignment (layout is
-            # translation-invariant), so skip re-layout and just repaint.
-            self.update()
+            # translation-invariant), so this is a transform-level shift;
+            # _set_center_time re-anchors only on large drift.
+            self._set_center_time(JDNTimestamp(
+                self.coord.center_time.value - delta_us
+            ))
+            self._drag_last_pos = pos
         else:
             self._update_hover(pos)
 
@@ -581,6 +602,9 @@ class TimelineView(QWidget):
             # Preserve: logical_mouse.x = (mouse_time - new_center) * new_scale
             new_center_value = mouse_time.value - logical_mouse.x() / new_scale
             self.coord.center_time = JDNTimestamp(int(new_center_value))
+            # Zoom invalidates cached pixel-based layout: full re-arrange.
+            self._arrange_threads()
+            self.update()
         else:
             # Pan by a fraction of the visible span per wheel notch, so the
             # scroll speed adapts to the current zoom level instead of being
@@ -590,12 +614,9 @@ class TimelineView(QWidget):
             if vp.length > 0:
                 visible_us = vp.length / self.coord.scale
                 delta_us = int(steps * visible_us * 0.1)
-                self.coord.center_time = JDNTimestamp(
+                self._set_center_time(JDNTimestamp(
                     self.coord.center_time.value - delta_us
-                )
-
-        self._arrange_threads()
-        self.update()
+                ))
 
     def resizeEvent(self, event):
         self._arrange_threads()
@@ -649,10 +670,9 @@ class TimelineView(QWidget):
         if Qt.Key.Key_Right in self._scroll_keys:
             delta_us += visible_us
         if delta_us:
-            self.coord.center_time = JDNTimestamp(
+            self._set_center_time(JDNTimestamp(
                 int(self.coord.center_time.value + delta_us)
-            )
-            self.update()
+            ))
 
     # ------------------------------------------------------------------
     # Hover / hit testing

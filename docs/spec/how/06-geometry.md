@@ -17,11 +17,14 @@
 - 默认 scale = 200 px/年（px/微秒换算）。
 - `axis_offset = 0.5`（轴在横向空间的比例位置：0=贴一端、0.5=居中、1=贴另一端；继承旧版 `__axis_align_offset` 语义）。
 
-## 3. 时间 ↔ 坐标
+## 3. 时间 ↔ 坐标（锚点坐标系，2026-09-19 起）
 
-- `time_to_logical_x(ts) = (ts.value − center_time.value) × scale`；
-- `logical_x_to_time` 反算（`int()` 截断）；
-- `visible_time_range()` = `center ± half_length/scale`；
+- **布局锚点 `_anchor_time`**：ThreadLayout 缓存的事件条坐标是**锚点相对**的，而非视野中心相对——`time_to_logical_x(ts) = (ts.value − anchor.value) × scale`；
+- **平移 = 纯 transform 平移**：拖动只改 `center_time`，锚点不动；`transform()` 内部附加 `(anchor − center) × scale` 的 X 向平移，缓存几何随轴一起移动，无需重排（known-issues §6 #38 的修复）；
+- `center_logical_x()` = 视野中心在锚点坐标系中的 X（轴线、Thread 背景按它定位，保证平移时始终铺满视口）；
+- **重锚时机**：每次 `_arrange_threads()`（缩放、resize、数据变化）把锚点同步为当前中心；纯平移漂移超过 4 个视口长度时由 `_set_center_time` 触发重锚（防止缓存坐标超出光栅引擎数值范围）；
+- `logical_x_to_time` 反算（`int()` 截断，锚点基准）；
+- `visible_time_range()` = `center ± half_length/scale`（中心基准，不随锚点变）；
 - `pixel_to_logical_distance` / `logical_to_pixel_distance`：距离换算（当前无调用方，预留接口）。
 
 ## 4. 轴位置与两侧预算
@@ -33,6 +36,7 @@
 
 - **横向**：`translate(width/2, axis_center)`——逻辑原点落在屏幕横向中点、轴心纵坐标。
 - **纵向**：`translate(axis_center, height/2)` 后 `rotate(90)`——逻辑 X 旋为屏幕纵向，逻辑 +Y 旋后为屏幕 **−X**（左）。因此纵向模式下右侧 Thread 须用**负** Y 区、左侧用正 Y 区，保证「right 视觉上仍在右」（`timeline_view.py:409-418`；测试锁定）。
+- 平移漂移平移量 `dx = (anchor − center) × scale`：横向并入首位移，纵向在 `rotate(90)` 后再 `translate(dx, 0)`（先作用于逻辑坐标再旋转）。
 - `logical_to_screen` / `screen_to_logical`：正/逆变换；不可逆时返回原点（防御分支）。
 
 ## 6. 与旧版对照

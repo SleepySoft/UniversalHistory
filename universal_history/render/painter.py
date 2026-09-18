@@ -204,10 +204,14 @@ def paint_axis(
     """
     vp = coord.viewport()
     half_len = vp.length / 2
+    # The axis line must span the *current* viewport, not the layout anchor:
+    # while panning, logical X 0 stays at the anchor time, so centre the line
+    # on the view centre's logical position.
+    cx = coord.center_logical_x()
 
     # Apply the unified logical coordinate transform for geometry.
     qp.setPen(QPen(axis_color, AXIS_LINE_WIDTH))
-    qp.drawLine(QPointF(-half_len, 0), QPointF(half_len, 0))
+    qp.drawLine(QPointF(cx - half_len, 0), QPointF(cx + half_len, 0))
 
     layers = _tick_layers(coord)
 
@@ -292,7 +296,9 @@ def paint_thread_background(
         return
     vp = coord.viewport()
     half_len = vp.length / 2
-    rect = QRectF(-half_len, thread.y0, vp.length, height)
+    # Span the current viewport along the time axis (see paint_axis).
+    cx = coord.center_logical_x()
+    rect = QRectF(cx - half_len, thread.y0, vp.length, height)
     qp.fillRect(rect, thread.track_color)
 
 
