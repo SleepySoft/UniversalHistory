@@ -32,11 +32,12 @@
 ## 5. 纪年约定（验收锚点）
 
 - 天文纪年：**Year 0 = 1 BC，Year -1 = 2 BC**；跨公元边界连续（`test_year_zero_continuity`）。
-- 用户可见格式化（`time_utils.format_jdn`）：`y<=0` → 显示年份 `1−y` + "BC" 后缀，否则 + "AD"；固定输出 `"{year}-{m:02d}-{d:02d} {HH:MM:SS} {BC|AD}"`。
+- 用户可见格式化（`time_utils.format_jdn`）：`y<=0` → 显示年份 `1−y` + "BC" 后缀，否则 + "AD"；输出 `"{year}-{m:02d}-{d:02d}[ {HH:MM:SS}] {BC|AD}"`，午夜省略时分秒。
 - 刻度标签（`render/painter.py`）：`y<=0` → `-(y-1)` + `" BC"` 后缀；正年份裸数字。
 - **旧版年份迁移一律调 `history_year_to_jdn_year()`**（负年 +1），见 [03-time-bridges.md](03-time-bridges.md)。
 
 ## 6. 已知瑕疵
 
-- `__eq__`/`__lt__` 重复定义两遍（重构残留，后定义生效）；
-- `is_leap_year` 的 `abs()` 与 Fliegel 正向算法对负年的地板除语义不完全一致（BCE 闰年边界可能差一天级偏差）——远古时间允许偏差（用户裁决 §8.1）。
+- ~~`__eq__`/`__lt__` 重复定义两遍~~ **已修复（2026-09-18，P2）**；
+- ~~`is_leap_year` 的 `abs()` 与负年地板除语义不一致~~ **已修复（2026-09-18，P2）**：去掉 abs，BCE 闰年判定一致，补回归测试；
+- 400 年周期闰年末日（1600/2000/2400-12-31）回读错误 **已修复（2026-09-18，P8）**：`days_to_years` 第 4 个百年分解 clamp（见 [98-known-issues.md](98-known-issues.md) §6 #37）。

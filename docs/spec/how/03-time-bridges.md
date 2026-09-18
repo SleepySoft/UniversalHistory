@@ -14,14 +14,14 @@
 
 - 依赖 `lunar_python`（requirements.txt）。
 - `to_lunar(jdn)` → `LunarResult`：链路 **JDN → Gregorian → Solar.fromYmdHms → getLunar**（必须经 Solar 中间层保精度）；字段含 year/month/day、`is_leap`（由 `getMonthInChinese()` 是否含「闰」判定）、`year_cn`（干支）、`month_cn`、`day_cn`、`animal`（生肖）；超范围异常包装为 `ValueError("农历转换失败 ...")`。
-- `from_lunar(year, month, day, h, m, s, is_leap_month=False)`：农历 → Lunar → Solar → JDN。**已知未完成：`is_leap_month` 参数被忽略**（闰月无法逆向构造）。
+- `from_lunar(year, month, day, h, m, s, is_leap_month=False)`：农历 → Lunar → Solar → JDN。`is_leap_month=True` 时按 lunar_python 约定以负数月份构造（如闰二月传 -2），并回读校验 `getMonthInChinese()` 含「闰」；该年该月无闰月时抛 `ValueError`（2026-09-18 P10 修复，回归测试 `test_from_lunar_leap_month`）。
 - lunar_python 有效年份范围远小于 JDN 全域——史前/深时无农历属预期。
 
 ## 3. history_time_adapter（旧 TICK → JDN，单向）
 
 模块 docstring 定位：旧 TICK 仅在自然语言解析时产生、**无数据以 TICK 持久化**；桥接是务实的——保留旧解析器产出的用户可见历法日期，不求严格天文等价（用户裁决 §8.1）。
 
-- **启动副作用**：把仓库根 `History/` 插入 `sys.path` 以 import `Utility.HistoryTime`（对同级 submodule 的硬依赖，解耦待办）。
+- **解析来源**：P4 起直接 import `universal_history.parsing.history_time`（移植包），不再有 sys.path 注入。
 - `history_year_to_jdn_year(history_year)`：**无 0 年 → 天文纪年**映射——负年 +1（-1 → 0 = 1 BC），非负不变。AGENTS.md 强制：迁移旧年份一律调此函数。
 - `history_tick_to_jdn(tick)`：`HistoryTime.tick_to_date_time_data` 拆日历分量 → 年份过上面的映射 → `from_ymd_hms` 重建。**走日历分量而非线性换算**，规避两系统零点/BCE 镜像差异。
 - `history_record_time_range(record)` → `(since, until)`：用原始 `time` 标签区分「无时间」与「真实的 AD 1」（TICK 0 歧义）；解析失败（since==until==0 且无 time 标签）返回 `(None, None)`。
@@ -29,10 +29,10 @@
 
 ## 4. time_utils（UI 面向，chrono 层唯一依赖 PyQt6 的文件）
 
-- `parse_time_text(text)` → `(since, until, display_strings)`：空文本或解析异常返回 `(None, None, [])`（吞掉一切异常）；多时间点取 min/max。
-- `format_jdn(ts)`：用户可见格式 `"{year}-{m:02d}-{d:02d} {HH:MM:SS} {BC|AD}"`；**总是带时分秒**（旧版 format_tick 的 show_date/show_time 开关不再存在）；`None` 返回空串。
+- `parse_time_text(text)` → `(since, until, display_strings)`：**标准 ISO 格式 `YYYY-MM-DD[ HH:MM[:SS]][ AD|BC]`（含负年）走快路径直接解析**，其余文本回落旧版自然语言解析；空文本或解析异常返回 `(None, None, [])`；多时间点取 min/max。
+- `format_jdn(ts)`：用户可见格式 `"{year}-{m:02d}-{d:02d}[ {HH:MM:SS}] {BC|AD}"`；午夜时刻省略时分秒（输出仍可被 `parse_time_text` 的 ISO 快路径回读）；`None` 返回空串。
 - `jdn_to_qdatetime(ts)`：datetime 范围内才转换，超范围返回 `None`——对应旧版「BCE 时间无法进日期拾取器」的行为通道（Calendar 按钮的 Out of Range 提示）。
-- `qdatetime_to_jdn(qdt)`：naive 视为 UTC。
+- `qdatetime_to_jdn(qdt)`：naive 视为 UTC 并发出 `UserWarning`。
 
 ## 5. 行为对照要点
 

@@ -41,6 +41,6 @@
 | 持续图形 | 直角纯色矩形 | 圆角矩形 + 深色描边 |
 | 文字 | 居中 WordWrap 无截断 | 左对齐 ElideRight 省略号 |
 | 字体 | 单点 6pt / 持续 8pt | 统一 8pt |
-| 主/副刻度 | 两级线长 ±15/±5px | 单层 ±6px（**回退，待实现**） |
+| 主/副刻度 | 两级线长 ±15/±5px | 多层 LOD：minor 半长刻度 / major 全长带标签 / demoted 淡背景（P9 已实现，见 [02-tick-stepper.md](02-tick-stepper.md) §6） |
 | 刻度标签 | 按最高非零位选格式、BC 前缀 | Year/Month/Day 特判、BC 后缀 |
 | 悬停提示 | 自绘十字线 + 蓝色提示框 + 进度 | Qt 原生 Tooltip（见 [09-timeline-view.md](09-timeline-view.md)） |

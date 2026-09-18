@@ -32,7 +32,7 @@
 - 用途即旧版 Index 的原始意图（`History/README.md` 概念 4）：网络传输、大列表、详情加载前的时间轴渲染——**先传简化记录，按需取完整记录**；
 - 旧版把 index 做成 focus=`index` 的特殊 HistoryRecord（附 .index 文件管线，且生成/回读均断链）——该「硬分出 index 概念」的做法废弃。
 
-- 仅有 `is_point_event()`（缺 `is_period_event`/`has_time`，已知瑕疵）。
+- `is_point_event()` / `is_period_event()` / `has_time()` 三谓词齐备（P5 补齐后两个）。
 
 ## 3. Workspace（QObject，内存唯一数据源）
 
@@ -41,20 +41,21 @@
 | 信号 | 参数 | 触发时机 |
 | --- | --- | --- |
 | `event_added` | Event | `add()` 追加后；`upsert()` 未发现同 uuid 时 |
-| `event_updated` | Event | `upsert()` 替换已有同 uuid 时 |
-| `event_removed` | str(uuid) | `remove()` 命中时；`remove_source()` 逐事件；**`upsert()` 替换时也会先发此信号**（内部调 remove） |
+| `event_updated` | Event | `upsert()` 替换已有同 uuid 时（**单次信号**，P5 起内部走 `_remove_silent`，不再先发 `event_removed`） |
+| `event_removed` | str(uuid) | `remove()` 命中时；`remove_source()` 逐事件 |
 | `source_loaded` | str(source) | `load()` 每个 source 合并完成后 |
+| `source_removed` | str(source) | `remove_source()` 整组移除后；`clear()` 对每个旧 source（P5 新增，替代此前误用的 `source_loaded`） |
 
 批量加载**不逐条发 event_added**（走 `_add_silent`）——UI 应监听 `source_loaded` 整体刷新。
 
 ### CRUD 语义
 
 - `sources()` / `events(source=None)`（None 摊平全部）/ `indexes(source=None)`（现场 to_index）。
-- `add(event)`：**空 source 抛 ValueError**；**不检查重复 uuid**（已知边界，测试待补）。
+- `add(event)`：**空 source 抛 ValueError**；**重复 uuid 抛 ValueError**（P5；`load` 路径遇重复 uuid 跳过并告警）。
 - `upsert(event)`：有同 uuid 则替换（跨 source 找第一个删除后追加到 `event.source` 末尾），否则追加；按是否存在旧值发 `event_updated` 或 `event_added`。
 - `remove(uuid)`：跨所有 source 找**第一个**同 uuid 弹出（旧版删所有——废弃旧语义；归属设计见 [14-event-ownership.md](14-event-ownership.md) O5）；source 空则删键；发 `event_removed`；返回被删事件或 None。
-- `remove_source(source)`：整组删除，逐事件发信号；不存在则静默。
-- `clear()`：清空后对每个旧 source 发 `source_loaded`——**信号名与语义不符（疑似 bug）**，无 `source_removed` 信号。
+- `remove_source(source)`：整组删除，逐事件发 `event_removed`，最后发一次 `source_removed`；不存在则静默。
+- `clear()`：清空后对每个旧 source 发 `source_removed`（P5 修正——此前误发 `source_loaded`）。
 - `get_by_uuid(uuid)`：首个匹配或 None。
 
 ### select 筛选（镜像旧版 `History.select_records` 语义）

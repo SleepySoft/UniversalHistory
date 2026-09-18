@@ -8,7 +8,9 @@
 universal_history/
 ├── chrono/    时间底座：JDNTimestamp、TickStepper、datetime/农历/旧 TICK 桥接
 ├── models/    数据：Event、EventIndex、Workspace（QObject + 信号）
-├── adapters/  格式：HisFileAdapter（外部格式唯一入口；复用旧 History 解析器）
+├── parsing/   格式解析：.his 解析器移植版（token_parser / label_tag /
+│              history_record / history_time / cn_num / text_utils）
+├── adapters/  格式：HisFileAdapter（外部格式唯一入口；基于 parsing 包）
 ├── render/    渲染：geometry（逻辑坐标）、layout（轨道布局）、painter（绘制）、
 │              timeline_view（TimelineView 控件，组装三者 + 交互）
 ├── ui/        对话框：editor、filter_dialog、thread_manager、add_thread_dialog、
@@ -21,14 +23,15 @@ universal_history/
 
 - chrono 不依赖任何上层（仅 `time_utils.py` 例外地依赖 PyQt6 供 UI 使用）；
 - models 依赖 chrono；QObject 仅用于信号，不依赖 QWidget；
-- adapters 依赖 models、chrono 与（运行时注入的）旧 `History/` 仓库；
+- parsing 只依赖标准库（`requests` 仅在 from_web 惰性 import），不依赖 chrono/models；
+- adapters 依赖 models、chrono 与 parsing 包；
 - render 依赖 chrono、models；**不读写业务数据**（事件以 EventIndex 快照进入）；
 - ui/main_window 组装各层，连接信号。
 
 ## 全局数据流
 
 ```
-.his 文件 ──HisFileAdapter──▶ Event（自然语言时间经旧解析器 → JDNTimestamp）
+.his 文件 ──HisFileAdapter──▶ Event（自然语言时间经 parsing 包 → JDNTimestamp）
                                    │
                               Workspace（内存唯一数据源）
                                    │  pyqtSignal：event_added / event_updated /
@@ -45,8 +48,8 @@ universal_history/
 
 - PyQt6（>=6.0,<7.0；实测 6.11 在某些 Windows 环境 Qt6Core.dll 加载失败，6.8.1 可用）；
 - `lunar_python`（农历桥接）；
-- `requests`（旧 History/core.py 的 import 依赖——适配层复用旧解析器而间接需要）；
-- **同级 `History/` 仓库**：`history_time_adapter.py` 与 `his_adapter.py` 通过 `sys.path` 注入复用旧解析器（解耦是已知待办）。
+- `requests`（可选，仅 `parsing` 包加载 Web source 时惰性 import）；
+- ~~同级 `History/` 仓库代码~~：P4 起解析器已移植进 `universal_history/parsing/`，无代码级依赖；`History/depot` 仍按路径作为默认数据目录（可注入其他 depot root）。
 
 ## 运行与测试
 

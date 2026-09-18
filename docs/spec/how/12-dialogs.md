@@ -10,17 +10,17 @@
   - **Focus Label**：可编辑下拉，候选 `""/time/location/people/organization/event`；
   - **Include / Exclude Labels**：语法 `label: tag1, tag2; label2: tag3`（占位示例 `tags: tag5; author: Sleepy` / `tags: draft`）；**无冒号的段静默忽略**；
   - **Time From / To**：占位 `e.g. 2000` / `e.g. 2020`。
-- **Apply**：时间端解析失败弹 "Parse Error" / `Cannot parse time: <输入>` 并中止；两端空 = 不限；**只填一端时另一端复制同值**（点区间而非开放区间——已知瑕疵）；调 `workspace.select(...)`（include_all=False / exclude_any=True）→ 转 EventIndex → 发射 → accept。
+- **Apply**：时间端解析失败弹 "Parse Error" / `Cannot parse time: <输入>` 并中止；两端空 = 不限；**只填一端时另一端开放**（None 端无界，`Workspace.select` 支持 None 端；#31 已修复）；调 `workspace.select(...)`（include_all=False / exclude_any=True）→ 转 EventIndex → 发射 → accept。
 - 结果去向：主窗口 `__filter__` Thread（见 [10-main-window.md](10-main-window.md) §4）。
-- 相对旧版：旧版 FilterEditor 的 Save/Load `.hisfilter`、Generate Index、Check 按钮均**未移植**（索引管线废弃；filter 预设存盘是 README IDEA 区设想，属路线图）。
+- **预设存取（P7 已实现）**：Save Preset / Load Preset 读写 `.hisfilter` 文件（utf-8，LabelTag 格式：sources/focus_label/include_tags/exclude_tags/time_from/time_to）；无效文件弹 "Invalid filter preset file"。旧版 Generate Index、Check 按钮未移植（索引管线废弃）。
 
 ## 2. ThreadManagerDialog（Thread Manager，Ctrl+M）
 
 - 标题 "Thread Manager"，750×500。
 - **Add Thread 组**：Add Left / Add Right → AddThreadDialog → `add_thread`。
-- **Axis Offset 组**：滑条 0–100，拖动即写 `coord.axis_offset` 并调私有方法 `view._arrange_threads()` 实时生效（分层瑕疵）。
+- **Axis Offset 组**：滑条 0–100，拖动即写 `coord.axis_offset` 并调公开方法 `view.relayout()` 实时生效（#30 已修复，不再调私有方法）。
 - 左右两个 QListWidget：项文本 `{source 或 (custom)}\nshare={share:.0%}`，track_color 作背景；两列表选中互斥。
-- 控制列：**Thread Share**（QDoubleSpinBox 0.01–0.99、步进 0.05；后缀 " %" 与小数值不匹配的文案瑕疵；仅该侧 >1 条 Thread 时可用）、**Remove**（无确认）、**Move Up / Move Down**（侧内 ±1，保持选中）、**Switch Side**（跨侧 + 归一化）、Close。
+- 控制列：**Thread Share**（QDoubleSpinBox 0.01–0.99、步进 0.05；#30 已去掉不匹配的 " %" 后缀；仅该侧 >1 条 Thread 时可用）、**Remove**（有确认框，#28）、**Move Up / Move Down**（侧内 ±1，保持选中）、**Switch Side**（跨侧 + 归一化）、Close。
 
 ## 3. AddThreadDialog（Add Thread）
 
@@ -40,4 +40,4 @@
 
 ## 5. 文本约定
 
-UI 用户可见文本全部为英文（AGENTS.md 约定：不要在同一功能中混入中文；旧版唯一的例外——中文退出确认框——未移植）。
+UI 用户可见文本以英文为源语言，全部经 `tr()` 包裹；i18n 由 `universal_history/i18n.py`（JsonTranslator）+ `translations/zh_CN.json` 提供中文翻译，语言解析顺序：显式参数 > `UH_LANGUAGE` 环境变量 > 系统 locale（#29 起接入，P11 补齐全部新文案）。

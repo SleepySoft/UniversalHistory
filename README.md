@@ -64,14 +64,16 @@ UniversalHistory/
 │   ├── main_window.py          # PyQt6 application entry point
 │   ├── models/                 # Event, EventIndex, Workspace
 │   ├── chrono/                 # JDN timestamp, bridges, tick stepping
+│   ├── parsing/                # ported .his parser (labels, records, time text)
 │   ├── adapters/               # .his file adapter
 │   ├── render/                 # timeline geometry/layout/painter/view
+│   ├── translations/           # JSON translation catalogs (e.g. zh_CN.json)
 │   └── ui/                     # editor, filter, thread-manager, add-thread,
 │                               # and bind-source dialogs
 ├── tests/                      # unit tests
 └── docs/                       # design notes
     ├── core_design.md          # time system design
-    ├── zoom_design.md          # tick / zoom design (LOD fade is pending)
+    ├── zoom_design.md          # tick / zoom design (multi-layer LOD fade implemented)
     └── spec/                   # WHY / WHAT / HOW structured spec
 ```
 
@@ -80,5 +82,7 @@ legacy History project plus targeted optimizations, while the foundations
 (time, data, adapter, rendering layers) follow the new design. Behavior details
 not covered here fall back to `HistoryMigration/docs/history_legacy_spec/`.
 
-The sibling `History/` directory is kept as a reference and is used only by the
-`.his` adapter parser.
+The `.his` parser is fully ported into `universal_history/parsing/` — there is
+no code dependency on the sibling `History/` repository. Its `History/depot`
+directory remains the default data depot (a plain data path; a different depot
+root can be injected into `HisFileAdapter`).

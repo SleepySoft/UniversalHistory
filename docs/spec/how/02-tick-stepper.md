@@ -1,6 +1,6 @@
 # HOW · 刻度层级与步进（TickStepper）
 
-> 实现：`universal_history/chrono/tick_stepper.py`；刻度选择在 `render/painter.py:_visible_ticks`。设计规范：`docs/zoom_design.md`。**注意：zoom_design.md 的多层 LOD 淡入淡出尚未实现**，见文末。
+> 实现：`universal_history/chrono/tick_stepper.py`；刻度选择在 `render/painter.py:_tick_layers`。设计规范：`docs/zoom_design.md`（多层 LOD 淡入淡出于 P9 实现，见文末 §6）。
 
 ## 1. 设计约束（zoom_design.md，已实现部分）
 
@@ -27,7 +27,7 @@
 | 1 Millennium | Year/1000 | 不限 |
 | Deep Time | Year/10⁴…5×10⁹（1-2-5 循环，至 5 Ga） | 不限 |
 
-常量：`ONE_DAY=86_400_000_000` 微秒；`ONE_YEAR=int(ONE_DAY*365.2425)`；`HIST_MIN=-10000`、`HIST_MAX=10000`（Day/Week/Month/Quarter 仅在有信史范围显示——**注意 `is_visible()` 目前无调用方**，范围约束已注册未生效）。
+常量：`ONE_DAY=86_400_000_000` 微秒；`ONE_YEAR=int(ONE_DAY*365.2425)`；`HIST_MIN=-10000`、`HIST_MAX=10000`（Day/Week/Month/Quarter 仅在有信史范围显示——`painter._visible_ticks` 已按可见区中心年调用 `is_visible()` 过滤，范围约束生效，2026-09-18）。
 
 ## 3. 吸附与推进
 
@@ -42,22 +42,23 @@
 
 - 目标间距 **120px**：`target_us = 120 / scale`，在 LEVELS 中从小到大取第一个 `avg_duration_us >= target_us` 的层级；都不够大取最末级。
 - 从 `snap_to_grid(start)` 起迭代收集 [start, end) 内刻度，安全上限 200 个。
-- **当前只选单一层级、统一线长（±6px）——无主/副刻度之分**。
+- ~~**当前只选单一层级、统一线长（±6px）——无主/副刻度之分**~~ P9 起为多层 LOD：`_tick_layers` 输出细→粗多层，minor（半长刻度无标签）/ major（全长带标签）/ demoted（淡背景层）三角色，密度驱动淡入淡出（`painter.py` TICK_FADE_MIN/FULL/DEMOTE_PX）。`_visible_ticks` 保留为 major 层兼容 wrapper。
 
 ## 5. 与旧版刻度体系的关系
 
 | 旧版（48 档 STEP_LIST） | 新版 | 说明 |
 | --- | --- | --- |
-| 主/副刻度六元组 offset 对 | 单层级表 | **回退**：副刻度体系未实现 |
+| 主/副刻度六元组 offset 对 | LOD 多层（minor/major/demoted） | **已换代（P9）**：副刻度由密度淡入的 minor 层承担；六元组 offset 对不移植 |
 | 年→月→周→日→时递进 | Day/Week/Month/Quarter/Year 层级 | 继承递进思想；注意新版最小层是「日」（时/分/秒层未注册） |
 | 刻度推进 `offset_ad_second`（显式无 0 年修正） | `get_next_tick` 日历运算 | 优化：天文纪年天然连续 |
 | MAIN_SCALE_MIN_PIXEL=50 | target_px=120 | 密度驱动思想继承，阈值与策略换代 |
 | 上限 1000 万年 | 50 亿年（Deep Time） | 扩展 |
 | BC 前缀（`BC 500`） | BC 后缀（`500 BC`） | 风格变化 |
 
-## 6. 未实现（zoom_design.md 核心机制）
+## 6. LOD 多层刻度（zoom_design.md 核心机制，P9 已实现部分）
 
-- 多层层叠绘制 + 透明度淡入淡出（三态：淡入/稳定/淡出）——缩放「无缝衔接」与临界闪烁的解决方案；
-- 主/副刻度样式（旧版主 ±15px / 副 ±5px）；
-- 三级显示降级（近代全显 / 史前仅年份 / 远古转 BP 格式，`core_design.md` §5.2）；
-- 时/分/秒层级（旧版有 1 天主刻度 → 副 4/2/1 小时档）。
+- ~~多层层叠绘制 + 透明度淡入淡出~~ **已实现（2026-09-18，P9）**：`painter._tick_layers` 按细→粗生成多层刻度；密度驱动淡入淡出——间距 <50px 不画，50–100px 线性淡入（minor，半长刻度无标签），100–300px 为主刻度（major），>300px 降为 30% 透明背景层（demoted，遇 demoted 即停止更粗层）；回归测试 `tests/render_tests/test_tick_layers.py`。
+- ~~主/副刻度样式~~ 已实现：minor 半长刻度无标签、major 全长带标签、demoted 淡色背景。
+- 仍**未实现**：
+  - 三级显示降级（近代全显 / 史前仅年份 / 远古转 BP 格式，`core_design.md` §5.2）；
+  - 时/分/秒层级（旧版有 1 天主刻度 → 副 4/2/1 小时档）。

@@ -37,8 +37,8 @@
 | 单击展开详情、密集聚簇 | `migration_analysis.md` §8.6 | 预留增强 |
 | depot 浏览器（文件重命名等） | `how/11-editor.md` §10 | 未移植；**有意不带回编辑器**——文件管理从编辑器剥离（[14-event-ownership.md](14-event-ownership.md) O6） |
 | filter 预设存盘（.hisfilter） | `how/06-filter.md` | 路线图；若实现统一 utf-8 |
-| 退出确认框 | `how/12-main-window.md` §4 | 旧版唯一中文 UI；新版无——需决策是否恢复（英文文案） |
-| 未保存修改提示 | `how/11-editor.md` | 两版均无——待修复项而非参照项 |
+| 退出确认框 | `how/12-main-window.md` §4 | **已定（2026-09-18）**：恢复退出提示；文案走 i18n（英文源文案，支持多语言） |
+| 未保存修改提示 | `how/11-editor.md` | **已定（2026-09-18）**：编辑器引入 dirty flag；凡有未保存内容的操作一律提示并给出保存选项；Thread 解绑仅提示关闭 |
 
 ## 3. 明确不复刻的旧版行为
 

@@ -1,7 +1,7 @@
 # HOW 总结二 · 验收清单
 
 > 与 `history_legacy_spec/how/99-migration-checklist.md` 配套使用：彼清单核对「旧版行为是否忠实迁移」，本清单核对「新版自身规格是否满足」。
-> 运行基准：`QT_QPA_PLATFORM=offscreen python -m unittest discover -s tests -v`（61 测试全过，2026-09-18）。
+> 运行基准：`QT_QPA_PLATFORM=offscreen python -m unittest discover -s tests -v`（158 测试全过，2026-09-18 P11 后）。
 
 ## 1. 时间层
 
@@ -18,7 +18,7 @@
 - [ ] 密度驱动选层（目标间距 120px）；
 - [ ] Ctrl+滚轮锚定缩放：鼠标指向的时间点不动；
 - [ ] Deep Time 覆盖到 50 亿年；
-- [ ] （排期后）主/副刻度双层 + 淡入淡出（zoom_design.md）。
+- [x] 主/副刻度多层 + 淡入淡出（zoom_design.md；P9 已实现，`tests/render_tests/test_tick_layers.py` 锁定）。
 
 ## 3. 布局与绘制
 
@@ -46,11 +46,11 @@
 - [ ] 右键菜单条目与位置感知（含事件级 Edit/Delete）；
 - [ ] 过滤结果显示在 `__filter__` Thread 且复用更新；
 - [ ] 启动自动加载示例数据；
-- [ ] UI 文本全英文。
+- [x] UI 文本以英文为源语言、全部经 `tr()` 包裹；中文翻译 `translations/zh_CN.json` 全量可用（`--lang` / `UH_LANGUAGE`）。
 
 ## 6. 修复后需回归的旧版缺陷
 
-编辑后刷新、focus=time 无法 Apply、回填 focus、删除确认、保存弹框、横纵切换可用——以上均有新实现；修复「Apply 丢失未暴露字段」后需补回归测试（见 [98-known-issues.md](98-known-issues.md) #26）。
+编辑后刷新、focus=time 无法 Apply、回填 focus、删除确认、保存弹框、横纵切换可用——以上均有新实现；「Apply 丢失未暴露字段」（#26）已修复并有回归测试 `test_apply_preserves_unexposed_labels`。
 
 ## 7. 归属与文件管理（[14-event-ownership.md](14-event-ownership.md)）
 
@@ -64,5 +64,5 @@
 
 - [ ] 不打开任何菜单，仅经时间轴右键/双击即可完成 新建→编辑→删除 全流程（T3）；
 - [ ] 每次保存后时间轴即时刷新（T2）；
-- [ ] Ctrl+E 在无 source 时是引导而非空编辑器（T4，待改）；
+- [x] Ctrl+E 在无 source 时是引导而非空编辑器（T4，#33 已修复）；
 - [ ] （排期后）位置感知新建：点击处时间预填（T5-1）。

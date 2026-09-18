@@ -60,9 +60,9 @@
 | O2 归属可见 | ✅ Thread Manager 与编辑器顶行 |
 | O3 写回原 source | ✅ 已实现 |
 | O4 默认归属 + 先绑定 | ✅ BindSourceDialog 流程 |
-| O5 按事件定位 | 🔶 部分（remove 只删首个命中；uuid 唯一性测试待补） |
+| O5 按事件定位 | ✅ 已实现（remove 只删首个命中；P5 起 `add()` 重复 uuid 抛 `ValueError`、`load` 路径跳过并告警，边界测试 `tests/test_workspace_boundaries.py`） |
 | O6 文件管理剥离 | ✅ 编辑器已不含文件浏览 |
-| O7 冲突检测 | ⬜ 预留 |
+| O7 冲突检测 | ✅ 已实现（P6）：sha256 指纹比对 + `SaveConflictError`，UI 弹「Overwrite?」确认 |
 
 ## 4. 验收锚点
 

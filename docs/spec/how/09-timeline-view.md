@@ -12,9 +12,9 @@
 
 ## 2. Workspace 绑定
 
-- `set_workspace(workspace, source=None)`：断开旧 workspace 的 4 个信号再连接新的；给 source 则立即建 Thread。
+- `set_workspace(workspace, source=None)`：断开旧 workspace 的 5 个信号（含 P5 新增的 `source_removed`）再连接新的；给 source 则立即建 Thread。
 - `load_source(source, align="right")`：source 下全部 Event 转 EventIndex 快照建 Thread；未设 workspace 抛 RuntimeError。
-- **槽函数**：增/改 → `refresh_source(event.source)`；删 → 因 uuid 反查不到 source，**刷新所有已绑定 source**（正确但粗暴）；source_loaded → 刷新该 source。
+- **槽函数**：增/改 → `refresh_source(event.source)`；删 → 按各 Thread 事件列表定位 uuid 所属 source，只刷新它（#24 已修复，不再全量刷新）；source_loaded → 刷新该 source；source_removed → 移除该 source 的所有 Thread。
 - `refresh_source(source)`：重取快照灌入所有绑定该 source 的 Thread；空 source 是 no-op（测试锁定）。
 
 ## 3. Thread 管理
@@ -32,13 +32,15 @@
 
 ## 5. 交互
 
-- **拖拽平移**：左键按下记点 + ClosedHand 光标；移动时按方向取屏幕 delta，`delta_us = delta_screen / scale`，`center_time -= delta_us`（内容跟随光标，**实时提交**——旧版是松开才提交）；松开恢复光标。
+- **拖拽平移**：左键按下记点 + ClosedHand 光标；移动时按方向取屏幕 delta，`delta_us = delta_screen / scale`，`center_time -= delta_us`（内容跟随光标，**实时提交**——旧版是松开才提交）；布局对平移不变，拖拽中只重绘不重排；松开恢复光标。
 - **双击**：命中 item → emit `itemDoubleClicked`。
 - **右键**：emit `contextMenuRequested(globalPos, EventIndex|None)`。
 - **滚轮**：
   - Ctrl+滚轮 = **锚定缩放**：factor 1.2（上）/ 1/1.2（下），scale 钳制 [1e-15, 1e-3] px/us；先记鼠标下逻辑 x 对应的时间，改 scale 后反解新 center_time 使该时间点仍在鼠标下（**与旧版同一不变式**；差异：旧版 48 档跳档，新版连续缩放）；
-  - 普通滚轮 = 平移：`delta_us = angleDelta.y / scale`——angleDelta（1/8 度单位，典型每格 120）直接当像素用，即每格约 120 逻辑像素（旧版每格滚 1/4 主格；新版滚动速度不随缩放自适应，已知瑕疵）。
+  - 普通滚轮 = 平移：每格（angleDelta 120 = 1 格）按**当前可见时间跨度的 10%** 平移，滚动速度随缩放自适应（2026-09-18 修复；旧版每格滚 1/4 主格）；
+- **方向键平滑滚动（P7）**：`setFocusPolicy(StrongFocus)`；按住 Up/Down 按可见时间跨度的 5% 连续小步滚动，Left/Right 按整页（约一屏跨度）滚动；50ms QTimer 驱动，松开即停。
 - **resize**：重排（Qt 自行触发重绘）。
+- **可见性裁剪（P9）**：`paintEvent` 与 `_item_at_screen` 经 `painter.item_in_time_range` 按可见时间范围（含约 120px/scale 边距）裁剪，大数据集不再每帧 O(N) 全量绘制；**布局不裁剪**以保持轨道稳定。
 
 ## 6. 悬停与命中
 
