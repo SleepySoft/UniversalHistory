@@ -1,5 +1,7 @@
 # UniversalHistory
 
+English | [中文](README.zh_CN.md)
+
 A standard implementation of infinite historical time and a timeline viewer,
 built on a single proleptic-Gregorian JDN timestamp model.
 
