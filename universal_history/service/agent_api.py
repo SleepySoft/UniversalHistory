@@ -21,6 +21,7 @@ from pydantic import BaseModel
 
 from universal_history.adapters import event_from_dict, event_to_dict
 from universal_history.chrono.jdn_timestamp import JDNTimestamp
+from universal_history.chrono.time_utils import parse_time_text
 from universal_history.models import Event, Workspace
 
 
@@ -145,6 +146,7 @@ def create_app(workspace: Optional[Workspace] = None) -> FastAPI:
                 "GET /api/sources",
                 "GET /api/events?source=&time_from=&time_to=",
                 "GET /api/events/{uuid}",
+                "GET /api/parse_time?text=",
                 "POST /api/events",
                 "DELETE /api/events/{uuid}",
                 "WS /ws (change notifications)",
@@ -182,6 +184,16 @@ def create_app(workspace: Optional[Workspace] = None) -> FastAPI:
         if event is None:
             raise HTTPException(status_code=404, detail="event not found")
         return event_to_dict(event)
+
+    @app.get("/api/parse_time")
+    def parse_time(text: str):
+        """Parse natural-language time text (server-side, same parser as the
+        desktop app) into JDN microsecond endpoints for the web frontend."""
+        since, until, _ = parse_time_text(text)
+        return {
+            "since": since.value if since is not None else None,
+            "until": until.value if until is not None else None,
+        }
 
     @app.post("/api/events", response_model=EventOut, status_code=201)
     def upsert_event(payload: EventIn):

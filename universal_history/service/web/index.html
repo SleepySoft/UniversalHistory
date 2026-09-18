@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UniversalHistory</title>
+<style>
+  :root {
+    --bg: #fff5f7;            /* native timeline background */
+    --axis: #787878;
+    --tick: #646464;
+    --text: #323232;
+    --panel: #ffffff;
+    --accent: #4f7cff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden;
+               font: 14px "Segoe UI", "Microsoft YaHei", sans-serif;
+               background: var(--bg); color: var(--text); }
+  #app { display: flex; height: 100%; }
+  #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #toolbar { display: flex; gap: 8px; align-items: center; padding: 6px 10px;
+             background: var(--panel); border-bottom: 1px solid #eee; }
+  #toolbar button { padding: 4px 12px; border: 1px solid #ddd;
+                    background: #fff; border-radius: 4px; cursor: pointer; }
+  #toolbar button:hover { border-color: var(--accent); color: var(--accent); }
+  #status { margin-left: auto; font-size: 12px; color: #999; }
+  #canvas { flex: 1; cursor: grab; display: block; }
+  #canvas.dragging { cursor: grabbing; }
+  #panel { width: 360px; background: var(--panel); border-left: 1px solid #eee;
+           padding: 14px; overflow-y: auto; display: none; }
+  #panel.open { display: block; }
+  #panel h3 { margin: 0 0 4px; }
+  #panel .meta { color: #888; font-size: 12px; margin-bottom: 10px;
+                 word-break: break-all; }
+  #panel textarea, #panel input { width: 100%; margin: 4px 0 10px;
+      padding: 6px; border: 1px solid #ddd; border-radius: 4px;
+      font: inherit; }
+  #panel label { font-size: 12px; color: #666; }
+  #panel .row { display: flex; gap: 8px; }
+  #panel .row > div { flex: 1; }
+  #panel .actions { display: flex; gap: 8px; margin-top: 8px; }
+  .btn-primary { background: var(--accent); color: #fff; border: none;
+                 padding: 6px 14px; border-radius: 4px; cursor: pointer; }
+  .btn-danger { background: #b91c1c; color: #fff; border: none;
+                padding: 6px 14px; border-radius: 4px; cursor: pointer; }
+  .btn-plain { background: #f3f4f6; border: 1px solid #ddd;
+               padding: 6px 14px; border-radius: 4px; cursor: pointer; }
+  #tooltip { position: fixed; pointer-events: none; background: rgba(30,30,30,.92);
+             color: #fff; padding: 6px 9px; border-radius: 4px; font-size: 12px;
+             white-space: pre-line; display: none; z-index: 10; max-width: 320px; }
+  #err { color: #b91c1c; font-size: 12px; min-height: 16px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="main">
+    <div id="toolbar">
+      <button id="btn-fit">Fit to View</button>
+      <button id="btn-reload">Reload</button>
+      <span id="status">connecting…</span>
+    </div>
+    <canvas id="canvas"></canvas>
+  </div>
+  <div id="panel">
+    <h3 id="p-title">Event Details</h3>
+    <div class="meta" id="p-meta"></div>
+    <div id="p-view"></div>
+    <div id="p-edit" style="display:none">
+      <label>Title</label><input id="e-title">
+      <label>Time (e.g. "300 BC", "2020-01-01", "公元前200年" via server parse)</label>
+      <input id="e-time">
+      <label>Brief</label><textarea id="e-brief" rows="2"></textarea>
+      <label>Event</label><textarea id="e-event" rows="6"></textarea>
+      <div id="err"></div>
+    </div>
+    <div class="actions">
+      <button class="btn-primary" id="btn-edit">Edit</button>
+      <button class="btn-primary" id="btn-save" style="display:none">Save</button>
+      <button class="btn-danger" id="btn-delete">Delete</button>
+      <button class="btn-plain" id="btn-close">Close</button>
+    </div>
+  </div>
+</div>
+<div id="tooltip"></div>
+<script>
+"use strict";
+/* ====================================================================
+   UniversalHistory web frontend — mirrors the native PyQt6 timeline:
+   central axis, left/right colored threads, point chips & period bars,
+   LOD tick layers (minor fade-in / major / demoted), drag pan, wheel pan,
+   Ctrl+wheel anchored zoom, hover tooltip, click = details, dblclick item
+   = edit, dblclick empty band = quick create. Live sync via WebSocket.
+   ==================================================================== */
+
+const US_PER_DAY = 86400e6;
+
+/* ---------- proleptic Gregorian <-> Julian Day (matches JDNTimestamp) --- */
+function jdToGregorian(jd) {
+  const z = Math.floor(jd + 0.5);
+  const f = jd + 0.5 - z;
+  const alpha = Math.floor((z - 1867216.25) / 36524.25);
+  const a = z + 1 + alpha - Math.floor(alpha / 4);
+  const b = a + 1524;
+  const c = Math.floor((b - 122.1) / 365.25);
+  const d = Math.floor(365.25 * c);
+  const e = Math.floor((b - d) / 30.6001);
+  const dayFloat = b - d - Math.floor(30.6001 * e) + f;
+  const month = e < 14 ? e - 1 : e - 13;
+  const year = month > 2 ? c - 4716 : c - 4715;
+  const day = Math.floor(dayFloat);
+  const frac = dayFloat - day;
+  const secs = Math.floor(frac * 86400 + 1e-6);
+  return { year, month, day,
+           hour: Math.floor(secs / 3600),
+           minute: Math.floor(secs / 60) % 60,
+           second: secs % 60 };
+}
+function gregorianToJd(y, m, d) {
+  const a = Math.floor((14 - m) / 12);
+  const y2 = y + 4800 - a;
+  const m2 = m + 12 * a - 3;
+  return d + Math.floor((153 * m2 + 2) / 5) + 365 * y2 +
+         Math.floor(y2 / 4) - Math.floor(y2 / 100) +
+         Math.floor(y2 / 400) - 32045 - 0.5;
+}
+function usToJd(us) { return us / US_PER_DAY; }
+function jdToUs(jd) { return Math.round(jd * US_PER_DAY); }
+
+/* ---------- tick levels (mirrors chrono/tick_stepper.py) ---------------- */
+const DAY = 1, WEEK = 7, MONTH = 30, QUARTER = 90, YEAR = 365.2425;
+const LEVELS = [
+  { id: "hour_6", days: 0.25, kind: "hour", step: 6, min: -10000, max: 10000 },
+  { id: "day_1", days: DAY, kind: "day", min: -10000, max: 10000 },
+  { id: "week_1", days: WEEK, kind: "week", min: -10000, max: 10000 },
+  { id: "month_1", days: MONTH, kind: "month", step: 1, min: -10000, max: 10000 },
+  { id: "month_3", days: QUARTER, kind: "month", step: 3, min: -10000, max: 10000 },
+];
+for (const s of [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000])
+  LEVELS.push({ id: "year_" + s, days: YEAR * s, kind: "year", step: s });
+for (const mag of [1e4, 1e5, 1e6, 1e7, 1e8, 1e9])
+  for (const s of [1, 2, 5])
+    LEVELS.push({ id: "year_" + s * mag, days: YEAR * s * mag,
+                  kind: "year", step: s * mag });
+
+const FADE_MIN = 50, FADE_FULL = 100, DEMOTE = 300;  /* px, mirrors painter */
+
+/* ---------- label formatting (mirrors painter._format_tick_label) ------- */
+function fmtYear(y) { return y <= 0 ? `${-(y - 1)} BC` : `${y}`; }
+function fmtBp(y) {
+  const bp = 1950 - y;
+  if (bp >= 1e9) return `${+(bp / 1e9).toPrecision(6)} Ga BP`;
+  if (bp >= 1e6) return `${+(bp / 1e6).toPrecision(6)} Ma BP`;
+  if (bp >= 1e3) return `${+(bp / 1e3).toPrecision(6)} ka BP`;
+  return `${bp} BP`;
+}
+function tickLabel(jd, level) {
+  const g = jdToGregorian(jd);
+  if (g.year < -10000) return fmtBp(g.year);
+  if (level.kind === "year") return fmtYear(g.year);
+  if (level.kind === "month")
+    return g.month === 1 ? fmtYear(g.year)
+         : ["","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][g.month];
+  if (level.kind === "week" || level.kind === "day")
+    return g.day === 1 ? `${String(g.month).padStart(2,"0")}/${g.year}` : `${g.day}`;
+  if (level.kind === "hour")
+    return g.hour === 0 ? `${fmtYear(g.year)}-${String(g.month).padStart(2,"0")}-${String(g.day).padStart(2,"0")}`
+                        : `${String(g.hour).padStart(2,"0")}:00`;
+  return "";
+}
+
+/* ---------- tick generation ---------------------------------------------- */
+function snapJd(jd, level) {
+  const g = jdToGregorian(jd);
+  if (level.kind === "year") {
+    const yy = g.year - (g.year % level.step + level.step) % level.step;
+    return gregorianToJd(yy, 1, 1);
+  }
+  if (level.kind === "month") {
+    const m = level.step === 3 ? Math.floor((g.month - 1) / 3) * 3 + 1 : 1;
+    return gregorianToJd(g.year, level.step === 1 ? g.month : m, 1);
+  }
+  if (level.kind === "week") {
+    const day0 = Math.floor(jd + 0.5);            /* integer JDN */
+    const dow = (day0 + 1) % 7;                   /* 0 = Monday */
+    return day0 - dow - 0.5;
+  }
+  if (level.kind === "day") return Math.floor(jd + 0.5) - 0.5;
+  if (level.kind === "hour") {
+    const day0 = Math.floor(jd + 0.5) - 0.5;
+    const h = Math.floor((jd - day0) * 24 + 1e-9);
+    return day0 + Math.floor(h / level.step) * level.step / 24;
+  }
+  return jd;
+}
+function nextJd(jd, level) {
+  if (level.kind === "year" || level.kind === "month") {
+    const g = jdToGregorian(jd);
+    if (level.kind === "year") return gregorianToJd(g.year + level.step, 1, 1);
+    const m0 = g.month - 1 + level.step;
+    return gregorianToJd(g.year + Math.floor(m0 / 12), m0 % 12 + 1, 1);
+  }
+  if (level.kind === "hour") return jd + level.step / 24;
+  return jd + level.days;
+}
+function tickLayers(centerJd, pxPerDay, width) {
+  const out = [];
+  for (const level of LEVELS) {
+    const px = level.days * pxPerDay;
+    if (px < FADE_MIN) continue;
+    const alpha = px >= FADE_FULL ? 1 : (px - FADE_MIN) / (FADE_FULL - FADE_MIN);
+    const role = px < FADE_FULL ? "minor" : px > DEMOTE ? "demoted" : "major";
+    const start = centerJd - width / 2 / pxPerDay, end = centerJd + width / 2 / pxPerDay;
+    const ticks = [];
+    let t = snapJd(start, level), guard = 0;
+    while (t < end && guard++ < 300) {
+      if (t >= start) ticks.push(t);
+      t = nextJd(t, level);
+    }
+    out.push({ level, ticks, alpha, role });
+    if (px > DEMOTE) break;
+  }
+  return out;
+}
+
+/* ---------- data ---------------------------------------------------------- */
+const THREAD_COLORS = [                       /* native palette approximations */
+  ["#f0f0f0", "#b9e3d9"], ["#fde8e8", "#f2b8c6"], ["#e8f0fe", "#a8c4fa"],
+  ["#fff7e0", "#f5d98b"], ["#eef7e8", "#b5dfae"], ["#f3eefe", "#cdb7f6"],
+];
+let threads = [];        /* [{source, events:[index...], colorIdx, side}] */
+let selected = null;     /* full event being shown/edited */
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return r.status === 204 ? null : r.json();
+}
+async function reload() {
+  const sources = await api("/api/sources");
+  const all = await api("/api/events");
+  threads = sources.map((s, i) => ({
+    source: s.source,
+    events: all.filter(e => e.source === s.source),
+    colorIdx: i % THREAD_COLORS.length,
+    side: i % 2 === 0 ? "right" : "left",
+  }));
+  layout();
+  draw();
+  setStatus(`${sources.length} sources, ${all.length} events`);
+}
+
+/* ---------- view state ---------------------------------------------------- */
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+let centerJd = usToJd(211813444800000000), pxPerDay = 2;  /* ~2000 AD center */
+let layoutItems = [];    /* [{idx, x0, x1, y, h, thread}] in screen px */
+
+function resize() {
+  canvas.width = canvas.clientWidth * devicePixelRatio;
+  canvas.height = canvas.clientHeight * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  layout();
+  draw();
+}
+window.addEventListener("resize", resize);
+
+function jdToX(jd) { return canvas.clientWidth / 2 + (jd - centerJd) * pxPerDay; }
+function xToJd(x) { return centerJd + (x - canvas.clientWidth / 2) / pxPerDay; }
+
+const AXIS_Y = () => canvas.clientHeight / 2;
+const ITEM_H = 22, TRACK_GAP = 4, ITEM_W_POINT = 120;
+
+function layout() {
+  layoutItems = [];
+  const H = canvas.clientHeight;
+  const sideBudget = (H / 2) - 40;
+  for (const side of ["left", "right"]) {
+    const sideThreads = threads.filter(t => t.side === side);
+    if (!sideThreads.length) continue;
+    const share = 1 / sideThreads.length;
+    let bandY = AXIS_Y();
+    for (const th of sideThreads) {
+      const h = sideBudget * share * 0.92;
+      const yTop = side === "right" ? bandY + 6 : bandY - 6 - h;
+      /* track assignment: overlapping periods stack */
+      const trackEnds = [];
+      for (const ev of th.events.slice().sort(
+          (a, b) => (a.since ?? -1e30) - (b.since ?? -1e30))) {
+        if (ev.since == null) continue;
+        const x0 = jdToX(usToJd(ev.since));
+        const x1 = ev.until && ev.until !== ev.since
+          ? jdToX(usToJd(ev.until)) : x0 + ITEM_W_POINT;
+        let tr = trackEnds.findIndex(e => e <= x0);
+        if (tr === -1) { trackEnds.push(0); tr = trackEnds.length - 1; }
+        trackEnds[tr] = Math.max(x0, x1);
+        layoutItems.push({ idx: ev, x0, x1, tr, thread: th, yTop, bandH: h });
+      }
+      bandY = side === "right" ? bandY + 6 + h : bandY - 6 - h;
+    }
+  }
+  for (const it of layoutItems) {
+    it.y = it.thread.side === "right"
+      ? it.yTop + it.tr * (ITEM_H + TRACK_GAP)
+      : it.yTop + it.bandH - ITEM_H - it.tr * (ITEM_H + TRACK_GAP);
+  }
+}
+
+/* ---------- painting ------------------------------------------------------ */
+function draw() {
+  const W = canvas.clientWidth, H = canvas.clientHeight;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = "#fff5f7"; ctx.fillRect(0, 0, W, H);
+
+  /* thread bands */
+  for (const it of layoutItems.length ? [] : []) {}
+  const bands = new Map();
+  for (const it of layoutItems) bands.set(it.thread, it);
+  for (const [th, it] of bands) {
+    ctx.fillStyle = THREAD_COLORS[th.colorIdx][0] + "55";
+    ctx.fillRect(0, it.yTop, W, it.bandH);
+  }
+
+  /* axis */
+  ctx.strokeStyle = "#787878"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, AXIS_Y()); ctx.lineTo(W, AXIS_Y()); ctx.stroke();
+
+  /* LOD tick layers: coarse -> fine */
+  const layers = tickLayers(centerJd, pxPerDay, W);
+  for (let i = layers.length - 1; i >= 0; i--) {
+    const { level, ticks, alpha, role } = layers[i];
+    const a = role === "demoted" ? 0.3 : alpha;
+    for (const t of ticks) {
+      const x = jdToX(t);
+      const len = role === "minor" ? 4 : 7;
+      ctx.strokeStyle = `rgba(100,100,100,${a})`;
+      ctx.lineWidth = role === "major" ? 1.5 : 1;
+      ctx.beginPath();
+      ctx.moveTo(x, AXIS_Y() - len); ctx.lineTo(x, AXIS_Y() + len); ctx.stroke();
+      if (role !== "minor") {
+        ctx.fillStyle = `rgba(50,50,50,${a})`;
+        ctx.font = "11px 'Segoe UI', sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(tickLabel(t, level), x, AXIS_Y() + 22);
+      }
+    }
+  }
+
+  /* items */
+  ctx.font = "11px 'Segoe UI', 'Microsoft YaHei', sans-serif";
+  for (const it of layoutItems) {
+    if (it.x1 < -140 || it.x0 > W + 140) continue;   /* visibility culling */
+    const point = it.idx.until == null || it.idx.until === it.idx.since;
+    const color = THREAD_COLORS[it.thread.colorIdx][1];
+    const x0 = point ? it.x0 : it.x0, x1 = point ? it.x0 + ITEM_W_POINT : Math.max(it.x1, it.x0 + 12);
+    ctx.fillStyle = point ? "#f3f4f6" : color;
+    ctx.strokeStyle = point ? color : color;
+    ctx.lineWidth = 1.2;
+    roundRect(ctx, x0, it.y, x1 - x0, ITEM_H, 4);
+    ctx.fill(); ctx.stroke();
+    if (point) {  /* pin to axis */
+      ctx.beginPath(); ctx.moveTo(it.x0, it.y + ITEM_H / 2);
+      ctx.lineTo(it.x0, AXIS_Y()); ctx.stroke();
+    }
+    ctx.fillStyle = "#1e1e1e"; ctx.textAlign = "left";
+    ctx.fillText(ellipsize(it.idx.abstract, x1 - x0 - 8), x0 + 5, it.y + 15);
+  }
+}
+function roundRect(c, x, y, w, h, r) {
+  c.beginPath();
+  c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r);
+  c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r);
+  c.arcTo(x, y, x + w, y, r); c.closePath();
+}
+function ellipsize(text, maxPx) {
+  if (ctx.measureText(text).width <= maxPx) return text;
+  while (text && ctx.measureText(text + "…").width > maxPx)
+    text = text.slice(0, -1);
+  return text + "…";
+}
+
+/* ---------- interaction --------------------------------------------------- */
+let dragX = null;
+canvas.addEventListener("mousedown", e => {
+  dragX = e.clientX; canvas.classList.add("dragging");
+});
+window.addEventListener("mousemove", e => {
+  if (dragX !== null) {
+    centerJd -= (e.clientX - dragX) / pxPerDay;
+    dragX = e.clientX; layout(); draw();
+  }
+});
+window.addEventListener("mouseup", () => {
+  dragX = null; canvas.classList.remove("dragging");
+});
+canvas.addEventListener("wheel", e => {
+  e.preventDefault();
+  if (e.ctrlKey) {                       /* anchored zoom at cursor */
+    const mouseJd = xToJd(e.clientX);
+    const factor = e.deltaY < 0 ? 1.2 : 1 / 1.2;
+    pxPerDay = Math.min(1e8, Math.max(1e-11, pxPerDay * factor));
+    centerJd = mouseJd - (e.clientX - canvas.clientWidth / 2) / pxPerDay;
+  } else {
+    centerJd += (e.deltaY / 120) * 0.1 * canvas.clientWidth / pxPerDay * -1;
+  }
+  layout(); draw();
+}, { passive: false });
+
+function itemAt(x, y) {
+  for (let i = layoutItems.length - 1; i >= 0; i--) {
+    const it = layoutItems[i];
+    const x1 = (it.idx.until == null || it.idx.until === it.idx.since)
+      ? it.x0 + ITEM_W_POINT : Math.max(it.x1, it.x0 + 12);
+    if (x >= it.x0 && x <= x1 && y >= it.y && y <= it.y + ITEM_H) return it;
+  }
+  return null;
+}
+function fmtIndexTime(idx) {
+  const fmt = us => {
+    const g = jdToGregorian(usToJd(us));
+    const y = g.year <= 0 ? `${-(g.year - 1)} BC` : `${g.year}`;
+    return `${y}-${String(g.month).padStart(2,"0")}-${String(g.day).padStart(2,"0")}`;
+  };
+  if (idx.since == null) return "(no time)";
+  return idx.until && idx.until !== idx.since
+    ? `${fmt(idx.since)} ~ ${fmt(idx.until)}` : fmt(idx.since);
+}
+
+const tooltip = document.getElementById("tooltip");
+canvas.addEventListener("mousemove", e => {
+  if (dragX !== null) { tooltip.style.display = "none"; return; }
+  const it = itemAt(e.clientX, e.clientY);
+  if (it) {
+    let text = `${fmtIndexTime(it.idx)}\n${it.idx.abstract}`;
+    if (it.idx.until && it.idx.until !== it.idx.since) {
+      const ys = jdToGregorian(usToJd(it.idx.since)).year;
+      const ye = jdToGregorian(usToJd(it.idx.until)).year;
+      const yc = Math.min(Math.max(jdToGregorian(xToJd(e.clientX)).year, ys), ye);
+      text += `\nYear ${yc - ys + 1} of ${ye - ys + 1}`;
+    }
+    tooltip.textContent = text;
+    tooltip.style.display = "block";
+    tooltip.style.left = e.clientX + 14 + "px";
+    tooltip.style.top = e.clientY + 14 + "px";
+  } else tooltip.style.display = "none";
+});
+
+let downPos = null;
+canvas.addEventListener("mousedown", e => { downPos = [e.clientX, e.clientY]; });
+canvas.addEventListener("click", e => {
+  if (downPos && Math.hypot(e.clientX - downPos[0], e.clientY - downPos[1]) > 6)
+    return;                               /* it was a drag */
+  const it = itemAt(e.clientX, e.clientY);
+  if (it) showDetails(it.idx);
+});
+canvas.addEventListener("dblclick", e => {
+  const it = itemAt(e.clientX, e.clientY);
+  if (it) { showDetails(it.idx).then(() => setEditMode(true)); }
+  else {
+    const jd = xToJd(e.clientX);
+    const g = jdToGregorian(jd);
+    const y = g.year <= 0 ? `${-(g.year - 1)} BC` : `${g.year}`;
+    const timeText = `${y}-${String(g.month).padStart(2,"0")}-${String(g.day).padStart(2,"0")}`;
+    /* quick create on empty band: nearest thread or fresh source */
+    showQuickCreate(timeText);
+  }
+});
+
+/* ---------- details / edit panel ------------------------------------------ */
+const panel = document.getElementById("panel");
+const pTitle = document.getElementById("p-title");
+const pMeta = document.getElementById("p-meta");
+const pView = document.getElementById("p-view");
+const pEdit = document.getElementById("p-edit");
+const btnEdit = document.getElementById("btn-edit");
+const btnSave = document.getElementById("btn-save");
+const btnDelete = document.getElementById("btn-delete");
+
+async function showDetails(idx) {
+  selected = await api("/api/events/" + idx.uuid);
+  setEditMode(false);
+  const L = k => (selected.labels[k] || []).join(", ");
+  pTitle.textContent = L("title") || idx.abstract || "(untitled)";
+  pMeta.textContent = `${fmtIndexTime(idx)} · ${selected.source}`;
+  pView.innerHTML = "";
+  if (L("brief")) pView.insertAdjacentHTML("beforeend",
+      `<p>${escapeHtml(L("brief"))}</p>`);
+  if (L("event")) pView.insertAdjacentHTML("beforeend",
+      `<p>${escapeHtml(L("event")).replace(/\n/g, "<br>")}</p>`);
+  if (L("location")) pView.insertAdjacentHTML("beforeend",
+      `<p>📍 ${escapeHtml(L("location"))}</p>`);
+  if (L("people")) pView.insertAdjacentHTML("beforeend",
+      `<p>👤 ${escapeHtml(L("people"))}</p>`);
+  if (L("organization")) pView.insertAdjacentHTML("beforeend",
+      `<p>🏛 ${escapeHtml(L("organization"))}</p>`);
+  if (L("tags")) pView.insertAdjacentHTML("beforeend",
+      `<p>🏷 ${escapeHtml(L("tags"))}</p>`);
+  panel.classList.add("open");
+  resize();
+}
+function escapeHtml(s) {
+  return s.replace(/[&<>"]/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+function setEditMode(on) {
+  if (on && selected) {
+    document.getElementById("e-title").value =
+      (selected.labels.title || [""])[0];
+    document.getElementById("e-brief").value =
+      (selected.labels.brief || [""])[0];
+    document.getElementById("e-event").value =
+      (selected.labels.event || [""])[0];
+    document.getElementById("e-time").value =
+      (selected.labels.time || [""])[0];
+  }
+  pView.style.display = on ? "none" : "block";
+  pEdit.style.display = on ? "block" : "none";
+  btnEdit.style.display = on ? "none" : "";
+  btnSave.style.display = on ? "" : "none";
+}
+btnEdit.onclick = () => setEditMode(true);
+btnSave.onclick = async () => {
+  if (!selected) return;
+  const timeText = document.getElementById("e-time").value.trim();
+  const parsed = await api("/api/parse_time?text=" +
+      encodeURIComponent(timeText)).catch(() => null);
+  if (!parsed || parsed.since == null) {
+    document.getElementById("err").textContent =
+      "Time field is required and must be parseable.";
+    return;
+  }
+  document.getElementById("err").textContent = "";
+  selected.labels.title = [document.getElementById("e-title").value];
+  selected.labels.brief = [document.getElementById("e-brief").value];
+  selected.labels.event = [document.getElementById("e-event").value];
+  selected.labels.time = [timeText];
+  selected.since = parsed.since; selected.until = parsed.until;
+  await api("/api/events", { method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(selected) });
+  setEditMode(false);
+  showDetails(selected);
+};
+btnDelete.onclick = async () => {
+  if (!selected) return;
+  if (!confirm(`Delete '${pTitle.textContent}'?`)) return;
+  await api("/api/events/" + selected.uuid, { method: "DELETE" });
+  panel.classList.remove("open"); selected = null; resize();
+};
+document.getElementById("btn-close").onclick = () => {
+  panel.classList.remove("open"); resize();
+};
+
+async function showQuickCreate(timeText) {
+  const title = prompt(`New event at ${timeText}\nTitle:`);
+  if (!title) return;
+  const parsed = await api("/api/parse_time?text=" +
+      encodeURIComponent(timeText));
+  const source = threads.length ? threads[0].source : "quick.uh.json";
+  await api("/api/events", { method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      source, since: parsed.since, until: parsed.until,
+      labels: { title: [title], time: [timeText] },
+    }) });
+}
+
+/* ---------- toolbar / status / websocket ---------------------------------- */
+document.getElementById("btn-fit").onclick = () => {
+  const times = [];
+  for (const th of threads) for (const e of th.events)
+    if (e.since != null) times.push(usToJd(e.since),
+      usToJd(e.until ?? e.since));
+  if (!times.length) return;
+  const lo = Math.min(...times), hi = Math.max(...times);
+  centerJd = (lo + hi) / 2;
+  const span = Math.max(hi - lo, 365);
+  pxPerDay = canvas.clientWidth * 0.9 / span;
+  layout(); draw();
+};
+document.getElementById("btn-reload").onclick = reload;
+function setStatus(s) { document.getElementById("status").textContent = s; }
+
+function connectWs() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws.onopen = () => setStatus("live");
+  ws.onmessage = () => reload();          /* any change -> refetch */
+  ws.onclose = () => {
+    setStatus("disconnected — retrying…");
+    setTimeout(connectWs, 2000);
+  };
+}
+
+resize();
+reload().catch(e => setStatus("load failed: " + e.message));
+connectWs();
+</script>
+</body>
+</html>

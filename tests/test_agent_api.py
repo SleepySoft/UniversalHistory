@@ -31,6 +31,17 @@ class TestAgentApi(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.json()["format"], "universal-history/v1")
 
+    def test_parse_time_endpoint(self):
+        r = self.client.get("/api/parse_time", params={"text": "300 BC"})
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(
+            JDNTimestamp(body["since"]).to_gregorian()[0], -299
+        )
+        r = self.client.get("/api/parse_time",
+                            params={"text": "not a time ##"})
+        self.assertIsNone(r.json()["since"])
+
     def test_sources(self):
         r = self.client.get("/api/sources")
         self.assertEqual(r.status_code, 200)
