@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
 )
 
 from universal_history.adapters import HisFileAdapter, SaveConflictError
+from universal_history.chrono.time_utils import format_jdn
 from universal_history.i18n import install_translator
 from universal_history.models import Workspace
 from universal_history.render import TimelineView
@@ -191,10 +192,10 @@ class MainWindow(QMainWindow):
         if not indexes and source:
             self._open_editor(source)
 
-    def _on_new_event_for_thread(self, thread):
+    def _on_new_event_for_thread(self, thread, preset_time_text: str = ""):
         """Open the editor for a thread, binding a source first if needed."""
         if thread.source:
-            self._open_editor(thread.source)
+            self._open_editor(thread.source, preset_time_text=preset_time_text)
             return
         dlg = BindSourceDialog(self._adapter, parent=self)
         if dlg.exec() != QDialog.DialogCode.Accepted:
@@ -204,7 +205,7 @@ class MainWindow(QMainWindow):
             self._workspace.load_events(events)
         thread.source = source
         self._view.set_thread_events(thread, [e.to_index() for e in events])
-        self._open_editor(source)
+        self._open_editor(source, preset_time_text=preset_time_text)
 
     def _on_open_file(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -260,9 +261,11 @@ class MainWindow(QMainWindow):
                 return
         self._open_editor(source)
 
-    def _open_editor(self, source: str, edit_uuid: str = ""):
+    def _open_editor(self, source: str, edit_uuid: str = "",
+                     preset_time_text: str = ""):
         dlg = EventEditorDialog(
-            self._workspace, source=source, edit_uuid=edit_uuid, parent=self
+            self._workspace, source=source, edit_uuid=edit_uuid, parent=self,
+            preset_time_text=preset_time_text,
         )
         dlg.exec()
 
@@ -290,9 +293,13 @@ class MainWindow(QMainWindow):
         menu.addAction(load_action)
 
         if thread is not None:
+            # T5-1: position-aware creation — prefill the clicked axis time.
+            click_time_text = format_jdn(self._view.time_at_screen(local_f))
             new_event_action = QAction(self.tr("New event"), self)
             new_event_action.triggered.connect(
-                lambda: self._on_new_event_for_thread(thread)
+                lambda: self._on_new_event_for_thread(
+                    thread, preset_time_text=click_time_text
+                )
             )
             menu.addAction(new_event_action)
 

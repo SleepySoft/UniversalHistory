@@ -673,6 +673,12 @@ class TimelineView(QWidget):
             return "left" if screen_pos.x() < center else "right"
         return "left" if screen_pos.y() < center else "right"
 
+    def time_at_screen(self, screen_pos: QPointF) -> JDNTimestamp:
+        """Time along the axis at a screen position (T5-1: position-aware
+        event creation prefills this into the editor's Time field)."""
+        logical_pos = self.coord.screen_to_logical(screen_pos)
+        return self.coord.logical_x_to_time(logical_pos.x())
+
     def _item_at_screen(self, screen_pos: QPointF):
         logical_pos = self.coord.screen_to_logical(screen_pos)
         # Cull threads' items outside the visible range before hit-testing

@@ -72,6 +72,7 @@ class EventEditor(QWidget):
         source: str = "",
         edit_uuid: str = "",
         parent=None,
+        preset_time_text: str = "",
     ):
         super().__init__(parent)
 
@@ -261,6 +262,11 @@ class EventEditor(QWidget):
             self._load_event(edit_uuid)
         else:
             self._new_record()
+            if preset_time_text:
+                # T5-1: position-aware creation — the clicked axis time is
+                # prefilled as the (user-visible, dirty) initial Time value.
+                self._line_time.setText(preset_time_text)
+                self._mark_dirty()
 
     # ------------------------------------------------------------------
     # Public API
@@ -730,12 +736,15 @@ class EventEditorDialog(QDialog):
         source: str = "",
         edit_uuid: str = "",
         parent=None,
+        preset_time_text: str = "",
     ):
         super().__init__(parent)
         self.setWindowTitle(self.tr("Event Editor"))
         self.resize(900, 700)
 
-        self.editor = EventEditor(workspace, source, edit_uuid, self)
+        self.editor = EventEditor(
+            workspace, source, edit_uuid, self, preset_time_text=preset_time_text
+        )
         layout = QVBoxLayout(self)
         layout.addWidget(self.editor)
 

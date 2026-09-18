@@ -31,7 +31,7 @@
 
 1. **Add thread**（总有）→ 光标侧弹 AddThreadDialog；
 2. **Load file**（总有）→ Thread 上 = 载入该 Thread；空白 = 等同 Add thread；
-3. **New event**（仅 Thread）→ 有 source 直接开编辑器；无 source 先弹 BindSourceDialog 绑定再开；
+3. **New event**（仅 Thread）→ 有 source 直接开编辑器；无 source 先弹 BindSourceDialog 绑定再开；**点击处的轴时间预填进 Time 字段**（T5-1，`format_jdn(time_at_screen(pos))`，预填内容计为未保存修改）；
 4. **Set thread share...** → 输入 0.01–0.99（"Share of this side (0.0 ~ 1.0):"）；
 5. **Switch side** / **Remove this thread**（移除有确认框，#28）；
 6. **Fit to view** / **Toggle orientation**；
