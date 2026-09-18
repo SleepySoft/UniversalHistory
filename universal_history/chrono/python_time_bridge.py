@@ -1,4 +1,5 @@
 import datetime
+import warnings
 from datetime import timezone
 from universal_history.chrono.jdn_timestamp import JDNTimestamp
 
@@ -27,8 +28,12 @@ class PythonTimeBridge:
     def from_datetime(dt: datetime.datetime) -> 'JDNTimestamp':
         # 强制转为 UTC，消除时区差异对绝对时间点的影响
         if dt.tzinfo is None:
-            # 如果是 naive time，假定为本地时间或 UTC？
-            # 最佳实践：假设为 UTC，或者抛出警告。这里假设为 UTC。
+            # naive datetime 没有时区信息，假定为 UTC 并显式告警
+            warnings.warn(
+                "naive datetime assumed to be UTC",
+                UserWarning,
+                stacklevel=2,
+            )
             dt_utc = dt.replace(tzinfo=datetime.timezone.utc)
         else:
             dt_utc = dt.astimezone(datetime.timezone.utc)

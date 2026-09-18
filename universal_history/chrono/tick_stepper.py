@@ -71,11 +71,8 @@ class TickStepper:
             # 简单天：对齐到午夜 00:00:00
             if level.step_count == 1:
                 return JDNTimestamp.from_ymd_hms(y, m, d, 0, 0, 0)
-            elif level.step_count == 7:  # 周 (假设对齐到周一)
-                # JDN 0 是周一(12:00)。我们需要计算当前周的周一。
-                # 这是一个简化的周对齐，实际可能需要根据 weekday 计算
+            elif level.step_count == 7:  # 周：对齐到 ISO 周一 00:00
                 wd = jdn.weekday  # 1=Mon, 7=Sun
-                # 回退到周一
                 offset_days = wd - 1
                 base_day = jdn - offset_days
                 # 重新构造以去除时分秒
@@ -188,16 +185,8 @@ magnitudes = [10_000, 100_000, 1_000_000, 10_000_000, 100_000_000, 1_000_000_000
 for mag in magnitudes:
     for step in base_steps:
         total_years = step * mag
-        label_suffix = ""
-        if mag >= 1_000_000_000:
-            label_suffix = "Ga"
-        elif mag >= 1_000_000:
-            label_suffix = "Ma"
-        elif mag >= 1_000:
-            label_suffix = "ka"
 
         # 简单生成 Label: e.g., "5 Ma"
-        label_val = total_years
         if total_years >= 1_000_000_000:
             label = f"{total_years // 1_000_000_000} Ga"
         elif total_years >= 1_000_000:

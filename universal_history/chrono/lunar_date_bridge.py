@@ -39,14 +39,19 @@ class LunarDateBridge:
                    is_leap_month: bool = False) -> 'JDNTimestamp':
         """
         农历 -> JDN
-        注意：lunar_python 的 Lunar.fromYmd 初始化时，若该年该月有闰月，
-        通常需要查看库的具体实现来指定是闰月。
-        此处简化为标准转换。
+
+        `is_leap_month=True` 时按闰月处理；lunar_python 约定闰月用负数月份
+        传入（如闰二月传 -2）。若该年该月没有闰月，库会抛出异常并在此
+        包装为 ValueError。
         """
         try:
-            # 构建 Lunar 对象
-            # 警告：如果正好是闰月，lunar_python 默认通常指非闰月
-            lunar = Lunar.fromYmdHms(year, month, day, hour, minute, second)
+            # lunar_python 约定：闰月以负数月份构造。
+            lunar_month = -month if is_leap_month else month
+            lunar = Lunar.fromYmdHms(year, lunar_month, day, hour, minute, second)
+
+            # 防御：部分版本对不存在的闰月会静默落到平月，回读校验。
+            if is_leap_month and "闰" not in lunar.getMonthInChinese():
+                raise ValueError(f"{year} 年 {month} 月不是闰月")
 
             # 转换为 Solar
             solar = lunar.getSolar()

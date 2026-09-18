@@ -30,14 +30,6 @@ class JDNTimestamp:
         y, m, d, h, mn, s, us = self.to_gregorian()
         return f"<JDNTimestamp: {y:04d}-{m:02d}-{d:02d} {h:02d}:{mn:02d}:{s:02d}.{us:06d}>"
 
-    def __eq__(self, other):
-        if isinstance(other, JDNTimestamp):
-            return self.value == other.value
-        return False
-
-    def __lt__(self, other):
-        return self.value < other.value
-
     # =========================================================================
     # 辅助属性 (用于调试和验证)
     # =========================================================================
@@ -225,10 +217,11 @@ class JDNTimestamp:
         return wd
 
     def is_leap_year(self) -> bool:
+        # Proleptic Gregorian 规则，直接作用于天文纪年（含 0 与负年）。
+        # Python 的 % 是向下取模，对负年的可整除判定与正年一致，
+        # 且与 from_ymd_hms 的 Fliegel 正向算法（移位后地板除）语义吻合，
+        # 无需取 abs。例如：0 (1 BC)、-4 (5 BC) 为闰年；-100 (101 BC) 不是。
         y = self.year
-        # Proleptic Gregorian 规则
-        if y < 0: y = -y  # 简单处理年份用于除法逻辑，实际上格里高利历含公元前闰年规则一致
-        # 公元前1年(0) 是闰年
         return (y % 4 == 0 and y % 100 != 0) or (y % 400 == 0)
 
     # =========================================================================

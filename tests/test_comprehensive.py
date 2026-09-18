@@ -162,6 +162,22 @@ class TestComprehensiveHistorySystem(unittest.TestCase):
         self.assertTrue(lunar_res.is_leap, "2023-03-22 应该是农历闰二月")
         self.assertEqual(lunar_res.day_cn, "初一")
 
+    def test_from_lunar_leap_month(self):
+        """known-issues #13: from_lunar 必须区分平月与闰月。"""
+        # 农历 2023 平二月初一 = 公历 2023-02-20
+        plain = LunarDateBridge.from_lunar(2023, 2, 1)
+        self.assertEqual(plain.to_gregorian()[:3], (2023, 2, 20))
+        # 农历 2023 闰二月初一 = 公历 2023-03-22
+        leap = LunarDateBridge.from_lunar(2023, 2, 1, is_leap_month=True)
+        self.assertEqual(leap.to_gregorian()[:3], (2023, 3, 22))
+        # 闰月结果回读应仍是闰月
+        back = LunarDateBridge.to_lunar(leap)
+        self.assertTrue(back.is_leap)
+        self.assertEqual((back.year, back.month, back.day), (2023, 2, 1))
+        # 不存在的闰月必须报错（2023 年没有闰三月）
+        with self.assertRaises(ValueError):
+            LunarDateBridge.from_lunar(2023, 3, 1, is_leap_month=True)
+
     def test_solar_terms_influence(self):
         """测试节气转换 (立春 vs 春节)"""
         # 2024-02-04 16:27:00 是立春

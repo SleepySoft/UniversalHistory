@@ -14,18 +14,10 @@ calendar date produced by HistoryTime's parser.
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 from typing import Optional, Tuple
 
-# Make the old History project importable so we can reuse its parser.
-_HISTORY_ROOT = Path(__file__).resolve().parents[3] / "History"
-_HISTORY_ROOT = _HISTORY_ROOT.resolve()
-if str(_HISTORY_ROOT) not in sys.path:
-    sys.path.insert(0, str(_HISTORY_ROOT))
-
-from Utility import HistoryTime  # noqa: E402
-from universal_history.chrono.jdn_timestamp import JDNTimestamp  # noqa: E402
+from universal_history.parsing import history_time as HistoryTime
+from universal_history.chrono.jdn_timestamp import JDNTimestamp
 
 
 def history_year_to_jdn_year(history_year: int) -> int:
