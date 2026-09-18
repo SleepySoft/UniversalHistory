@@ -38,7 +38,7 @@
 | 17 | `render/painter.py` | ~~刻度选择未使用 TickLevel 的 ±10000 年可见范围~~ | **已修复（2026-09-18）**：`_visible_ticks` 按可见区中心年过滤 `is_visible()` |
 | 18 | `render/painter.py` | ~~年标签 `step_count>=1000` 死分支，ka/Ma/Ga 名称未用上~~ | **已修复（2026-09-18）**：Deep Time 刻度使用 ka/Ma/Ga 幅度标签 |
 | 19 | ~~`render/layout.py:151`、`timeline_view.py:439-449`~~ | ~~布局与绘制均全量处理所有事件，无可见性裁剪——大数据集 O(N) 每帧~~ | **部分修复（2026-09-18，P9）**：绘制与命中测试接入 `item_in_time_range` 可见性裁剪（含约 120px/scale 边距）；布局仍全量以维持轨道稳定（设计哲学保留） |
-| 20 | `render/layout.py:19`、`geometry.py:148-153` 等 | POINT_EVENT_PIXEL_HEIGHT、pixel_to_logical_distance、itemClicked、side_at_screen 等定义未使用 | **排期（保留为预留接口）**：`side_at_screen` 实际有调用方（右键菜单定侧）；其余为已登记预留（单击展开 §8.6 等），spec 各篇已注明 |
+| 20 | `render/layout.py:19`、`geometry.py:148-153` 等 | POINT_EVENT_PIXEL_HEIGHT、pixel_to_logical_distance、itemClicked、side_at_screen 等定义未使用 | **排期（保留为预留接口）**：`side_at_screen` 有调用方（右键菜单定侧），`itemClicked` 已于 F4 实发（单击详情面板）；其余为已登记预留 |
 | 21 | `render/timeline_view.py` | ~~拖拽中每次 mouseMove 都重排（平移不改布局，多余计算）~~ | **已修复（2026-09-18）**：平移只 `update()`，不再触发 `_arrange_threads()` |
 | 22 | `render/timeline_view.py` | ~~普通滚轮把 angleDelta 直接当像素，滚动速度不随缩放自适应~~ | **已修复（2026-09-18）**：每格滚轮按可见时间跨度的 10% 平移 |
 | 23 | `render/timeline_view.py` | ~~`fit_to_sources` 对全 None 时间的事件集会 ValueError；纯同一时间点数据集 fit 无效~~ | **已修复（2026-09-18）**：全 None 早退；同时间点数据集居中并使用最小一年区间 |
@@ -57,7 +57,7 @@
 | 31 | `ui/filter_dialog.py` | ~~单端时间范围退化为点区间；三态返回值可读性差~~ | **已修复（2026-09-18）**：开口区间（None 端无界），`Workspace.select` 支持 None 端；三态返回值改为抛 ValueError |
 | 32 | `ui/editor.py` | Calendar 限公元 1-9999 年；initial=None 时非当前时间 | **已定（2026-09-18）**：分两阶段——先保持自然语言文本 + Calendar 服务近期/公元后日期（日记场景），自绘 BCE 年/月/日控件排期后期。第一阶段已完成（ISO 快路径使文本录入可靠回读，见 §6 #35） |
 | 33 | `main_window.py` | ~~Ctrl+E 在无 source 时打开空编辑器~~ | **已修复（2026-09-18）**：无 source 时弹出引导（打开文件 / 新建文件 / 取消），选定后再进编辑器 |
-| 34 | `render/timeline_view.py` 等 | 位置感知新建（点击处时间预填）、非模态侧边编辑器、快速录入、单击展开详情 | 排期（T5 增强，[15-timeline-centric-editing.md](15-timeline-centric-editing.md)） |
+| 34 | ~~`render/timeline_view.py` 等~~ | ~~位置感知新建（点击处时间预填）、非模态侧边编辑器、快速录入、单击展开详情~~ | **部分完成（2026-09-18，F2/F3/F4）**：位置感知新建、保存后视图跳转、单击展开详情面板已实现；非模态侧边编辑器与快速录入仍排期（[15-timeline-centric-editing.md](15-timeline-centric-editing.md) T5-3/T5-4） |
 
 ## 5. 文档偏差
 

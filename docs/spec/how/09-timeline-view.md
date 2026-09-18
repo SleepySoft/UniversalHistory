@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | `itemDoubleClicked` | EventIndex | 双击命中事件时发射（main_window 接此打开编辑器） |
 | `contextMenuRequested` | QPoint（全局坐标）, Optional[EventIndex] | 右键；**精确到事件级**（旧版只到 Thread 级） |
-| `itemClicked` | EventIndex | **已定义但从未 emit**（单击展开详情未实现，§8.6 预留） |
+| `itemClicked` | EventIndex | 单击命中事件时发射（T5-5/F4 起实发——press/release 位移 <6px 才算单击，拖拽不触发）；主窗口接此打开右侧 Event Details 面板 |
 
 ## 2. Workspace 绑定
 

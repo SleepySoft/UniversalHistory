@@ -83,6 +83,8 @@ class TimelineView(QWidget):
         self._workspace: Optional[Workspace] = None
 
         self._drag_last_pos: Optional[QPointF] = None
+        # Press position for click-vs-drag discrimination (itemClicked, §8.6/T5-5).
+        self._press_pos: Optional[QPointF] = None
         self._hover_item: Optional[EventIndex] = None
         # Year under the cursor for the period-progress tooltip ("Year N of M");
         # tracked so the tooltip refreshes as the cursor moves within one item.
@@ -502,6 +504,7 @@ class TimelineView(QWidget):
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:
             self._drag_last_pos = QPointF(event.pos())
+            self._press_pos = QPointF(event.pos())
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
 
     def mouseMoveEvent(self, event: QMouseEvent):
@@ -527,8 +530,19 @@ class TimelineView(QWidget):
 
     def mouseReleaseEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:
+            # Click vs drag: emit itemClicked only when the press/release
+            # barely moved and an item is under the cursor (T5-5 / §8.6).
+            was_click = (
+                self._press_pos is not None
+                and (QPointF(event.pos()) - self._press_pos).manhattanLength() < 6
+            )
             self._drag_last_pos = None
+            self._press_pos = None
             self.setCursor(Qt.CursorShape.ArrowCursor)
+            if was_click:
+                item = self._item_at_screen(QPointF(event.pos()))
+                if item is not None:
+                    self.itemClicked.emit(item.event)
 
     def mouseDoubleClickEvent(self, event: QMouseEvent):
         item = self._item_at_screen(QPointF(event.pos()))

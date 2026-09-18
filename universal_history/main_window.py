@@ -7,6 +7,7 @@ into a single PyQt6 desktop application.
 
 from __future__ import annotations
 
+import html
 import sys
 from pathlib import Path
 
@@ -21,8 +22,8 @@ if __name__ == "__main__":
 from PyQt6.QtCore import QPointF, Qt
 from PyQt6.QtGui import QAction, QColor, QCloseEvent, QKeySequence
 from PyQt6.QtWidgets import (
-    QApplication, QDialog, QFileDialog, QInputDialog, QMainWindow, QMenu,
-    QMessageBox, QVBoxLayout, QWidget,
+    QApplication, QDialog, QDockWidget, QFileDialog, QInputDialog, QMainWindow,
+    QMenu, QMessageBox, QTextBrowser, QVBoxLayout, QWidget,
 )
 
 from universal_history.adapters import HisFileAdapter, SaveConflictError
@@ -51,9 +52,21 @@ class MainWindow(QMainWindow):
         self._view = TimelineView()
         self._view.set_workspace(self._workspace)
         self._view.itemDoubleClicked.connect(self._on_item_double_clicked)
+        self._view.itemClicked.connect(self._on_item_clicked)
         self._view.contextMenuRequested.connect(self._on_timeline_context_menu)
 
         self.setCentralWidget(self._view)
+
+        # T5-5 / §8.6: single-click a timeline item to show its full content
+        # in a side panel, instead of opening the editor just to read it.
+        self._details_view = QTextBrowser(self)
+        self._details_dock = QDockWidget(self.tr("Event Details"), self)
+        self._details_dock.setObjectName("eventDetailsDock")
+        self._details_dock.setWidget(self._details_view)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea,
+                           self._details_dock)
+        self._details_dock.hide()
+
         self._init_menu()
 
         # Load example data by default.
@@ -278,6 +291,39 @@ class MainWindow(QMainWindow):
 
     def _on_item_double_clicked(self, index):
         self._open_editor(index.source, edit_uuid=index.uuid)
+
+    def _on_item_clicked(self, index):
+        """T5-5: show the full event content in the side details panel."""
+        event = self._workspace.get_by_uuid(index.uuid)
+        if event is None:
+            return
+        self.show_event_details(event)
+
+    def show_event_details(self, event):
+        """Populate and reveal the side details panel for `event`."""
+        if event.since is not None:
+            time_text = format_jdn(event.since)
+            if event.until is not None and event.until != event.since:
+                time_text += " ~ " + format_jdn(event.until)
+        else:
+            time_text = self.tr("No Time")
+
+        parts = []
+        title = event.title()
+        if title:
+            parts.append(f"<h3>{html.escape(title)}</h3>")
+        parts.append(
+            f"<p><i>{html.escape(time_text)}</i><br>"
+            f"<small>{self.tr('Source')}: {html.escape(event.source)}</small></p>"
+        )
+        brief = event.brief()
+        if brief:
+            parts.append(f"<p>{html.escape(brief)}</p>")
+        body = event.event_text()
+        if body:
+            parts.append(f"<p>{html.escape(body).replace(chr(10), '<br>')}</p>")
+        self._details_view.setHtml("".join(parts))
+        self._details_dock.show()
 
     def _on_timeline_context_menu(self, global_pos, index):
         menu = QMenu(self)
