@@ -34,7 +34,7 @@ from universal_history.render import TimelineView
 from universal_history.ui import (
     AddThreadDialog,
     BindSourceDialog,
-    EventEditorDialog,
+    EventEditor,
     FilterDialog,
     ThreadManagerDialog,
 )
@@ -66,6 +66,17 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea,
                            self._details_dock)
         self._details_dock.hide()
+
+        # T5-3: non-modal side editor — the timeline stays visible and
+        # interactive while editing. Replaces the former modal dialog.
+        self._editor = EventEditor(self._workspace, parent=self)
+        self._editor.event_saved.connect(self._on_editor_event_saved)
+        self._editor_dock = QDockWidget(self.tr("Event Editor"), self)
+        self._editor_dock.setObjectName("eventEditorDock")
+        self._editor_dock.setWidget(self._editor)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea,
+                           self._editor_dock)
+        self._editor_dock.hide()
 
         self._init_menu()
 
@@ -276,16 +287,26 @@ class MainWindow(QMainWindow):
 
     def _open_editor(self, source: str, edit_uuid: str = "",
                      preset_time_text: str = ""):
-        dlg = EventEditorDialog(
-            self._workspace, source=source, edit_uuid=edit_uuid, parent=self,
-            preset_time_text=preset_time_text,
-        )
-        # T5-2: after a save, reveal the event on the timeline (no-op when it
-        # is already visible, e.g. position-aware creation at the clicked spot).
-        dlg.editor.event_saved.connect(self._on_editor_event_saved)
-        dlg.exec()
+        """T5-3: open the non-modal side editor dock (timeline stays usable).
+
+        Unsaved content in the panel is confirmed before switching context;
+        hiding the dock keeps the unsaved content intact."""
+        if self._editor.is_dirty() and not self._editor.confirm_discard_or_save():
+            return
+        if self._editor.source() != source:
+            self._editor.set_source(source)
+        if edit_uuid:
+            if not self._editor.edit_event(edit_uuid):
+                return
+        else:
+            if not self._editor.start_new_record(preset_time_text):
+                return
+        self._editor_dock.show()
+        self._editor_dock.raise_()
 
     def _on_editor_event_saved(self, event):
+        # T5-2: after a save, reveal the event on the timeline (no-op when it
+        # is already visible, e.g. position-aware creation at the clicked spot).
         if event.since is not None:
             self._view.reveal_time(event.since)
 

@@ -280,6 +280,27 @@ class EventEditor(QWidget):
     def source(self) -> str:
         return self._source
 
+    def edit_event(self, event_uuid: str) -> bool:
+        """Load an existing record for editing (T5-3 non-modal reuse).
+
+        Prompts to save/discard pending changes first; returns False when the
+        user cancelled."""
+        if not self.confirm_discard_or_save():
+            return False
+        self._load_event(event_uuid)
+        return True
+
+    def start_new_record(self, preset_time_text: str = "") -> bool:
+        """Start a fresh record, optionally with a prefilled Time field
+        (T5-1/T5-3). Prompts for pending changes; False when cancelled."""
+        if not self.confirm_discard_or_save():
+            return False
+        self._new_record()
+        if preset_time_text:
+            self._line_time.setText(preset_time_text)
+            self._mark_dirty()
+        return True
+
     def is_dirty(self) -> bool:
         return self._dirty
 
