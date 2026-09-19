@@ -283,7 +283,13 @@ function layout() {
     for (const th of sideThreads) {
       const h = sideBudget * share * 0.92;
       const yTop = side === "right" ? bandY + 6 : bandY - 6 - h;
-      /* track assignment: overlapping periods stack */
+      /* Track count is bounded by the band height (mirrors the desktop
+         ThreadLayout: items that no longer fit fall back onto the last
+         track and overlap there) — without this clamp, dense clusters spill
+         out of the band: left-side items stack up past the axis to the top
+         of the screen (reported bug near 450 BC), right-side items spill
+         into the band below. */
+      const maxTracks = Math.max(1, Math.floor((h + TRACK_GAP) / (ITEM_H + TRACK_GAP)));
       const trackEnds = [];
       for (const ev of th.events.slice().sort(
           (a, b) => (a.since ?? -1e30) - (b.since ?? -1e30))) {
@@ -292,7 +298,13 @@ function layout() {
         const x1 = ev.until && ev.until !== ev.since
           ? jdToX(usToJd(ev.until)) : x0 + ITEM_W_POINT;
         let tr = trackEnds.findIndex(e => e <= x0);
-        if (tr === -1) { trackEnds.push(0); tr = trackEnds.length - 1; }
+        if (tr === -1) {
+          if (trackEnds.length < maxTracks) {
+            trackEnds.push(0); tr = trackEnds.length - 1;
+          } else {
+            tr = maxTracks - 1;          /* fallback overlap, last track */
+          }
+        }
         trackEnds[tr] = Math.max(x0, x1);
         layoutItems.push({ idx: ev, x0, x1, tr, thread: th, yTop, bandH: h });
       }
@@ -352,16 +364,39 @@ function draw() {
     if (it.x1 < -140 || it.x0 > W + 140) continue;   /* visibility culling */
     const point = it.idx.until == null || it.idx.until === it.idx.since;
     const color = THREAD_COLORS[it.thread.colorIdx][1];
-    const x0 = point ? it.x0 : it.x0, x1 = point ? it.x0 + ITEM_W_POINT : Math.max(it.x1, it.x0 + 12);
-    ctx.fillStyle = point ? "#f3f4f6" : color;
-    ctx.strokeStyle = point ? color : color;
+    const x0 = it.x0, x1 = point ? it.x0 + ITEM_W_POINT : Math.max(it.x1, it.x0 + 12);
+
+    if (point) {
+      /* Lollipop idiom (same as the desktop painter): an axis dot marks the
+         exact instant, a thin stem connects it to the card's axis-side edge,
+         and the card is anchored at its left edge (= the instant itself).
+         Replaces the old pin from the card's middle, whose meaning was
+         ambiguous. */
+      const innerY = it.thread.side === "right" ? it.y : it.y + ITEM_H;
+      if (ITEM_W_POINT / pxPerDay > 2 * 365.2425) {
+        /* Zoomed far out the fixed-width card would span centuries: degrade
+           to an instant tick on the card's lane plus the axis dot. */
+        ctx.strokeStyle = color; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(x0, it.y); ctx.lineTo(x0, it.y + ITEM_H); ctx.stroke();
+      } else {
+        ctx.strokeStyle = "#6e6e6e"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(x0, innerY); ctx.lineTo(x0, AXIS_Y()); ctx.stroke();
+        ctx.fillStyle = "#f3f4f6"; ctx.strokeStyle = color; ctx.lineWidth = 1.2;
+        roundRect(ctx, x0, it.y, x1 - x0, ITEM_H, 4);
+        ctx.fill(); ctx.stroke();
+        ctx.fillStyle = "#1e1e1e"; ctx.textAlign = "left";
+        ctx.fillText(ellipsize(it.idx.abstract, x1 - x0 - 8), x0 + 5, it.y + 15);
+      }
+      ctx.fillStyle = "#5a5a5a";
+      ctx.beginPath(); ctx.arc(x0, AXIS_Y(), 3, 0, Math.PI * 2); ctx.fill();
+      continue;
+    }
+
+    ctx.fillStyle = color;
+    ctx.strokeStyle = color;
     ctx.lineWidth = 1.2;
     roundRect(ctx, x0, it.y, x1 - x0, ITEM_H, 4);
     ctx.fill(); ctx.stroke();
-    if (point) {  /* pin to axis */
-      ctx.beginPath(); ctx.moveTo(it.x0, it.y + ITEM_H / 2);
-      ctx.lineTo(it.x0, AXIS_Y()); ctx.stroke();
-    }
     ctx.fillStyle = "#1e1e1e"; ctx.textAlign = "left";
     ctx.fillText(ellipsize(it.idx.abstract, x1 - x0 - 8), x0 + 5, it.y + 15);
   }
