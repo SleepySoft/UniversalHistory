@@ -44,7 +44,7 @@
 
 ## 6. 悬停与命中
 
-- `_update_hover`：命中 item 即 `QToolTip.showText` **主动弹出跟随光标的提示框**（2026-09-19 恢复旧版跟随行为——此前用 widget toolTip 属性被动弹出，光标须停留约 1 秒才出现，用户感知为「悬浮提示没有」，known-issues #39）；移出 item 或离开控件时 `hideText`；拖动开始时隐藏。**Qt 原生 Tooltip**（取代旧版自绘十字线 + 蓝色提示框）；持续事件的「第N年/共M年」进度提示**已移植**（2026-09-18，F1）：按光标所在年份显示 "Year N of M"（天文纪年差值，钳入事件区间，跨年界正确），光标在事件内移动跨年即刷新。
+- `_update_hover`：记录光标位置/悬停 item/光标年，触发重绘；overlay 在 `paintEvent` 末尾以屏幕坐标自绘——**十字线**（过光标的水平+垂直虚线通长直线）+ **浮动信息框**（跟随光标，出边界自动翻转；深色圆角为显示优化，机制与旧版一致）。提示内容逐行：①光标处时间 `(y/mm/dd)`（era-aware，如 `(3000 BC/01/01)`）；②悬停 item 时追加旧版条目提示——摘要，单点事件 ` : [日期]`，持续事件 `(N/M)` 光标年进度 + ` : [起 - 止]`（旧版「第N年/共M年」原格式）。拖动时隐藏（legacy `__l_pressing`），`set_real_time_tips_enabled()` 可开关（legacy `enable_real_time_tips`）。**2026-09-19 定稿**：弃用 Qt toolTip/QToolTip 方案（#39 结论），全面恢复旧版自绘实时提示机制；回归测试 `tests/render_tests/test_hover_overlay.py`。
 - `_tooltip_text`：`"{year} {era}-MM-DD"`（era 为 BC/AD 后缀）；单点 → `时间\n摘要`；持续 → `起 ~ 止\n摘要`。
 - 命中链：屏幕点 → `screen_to_logical` → 各 Thread `item_at_logical`（逆序，chip 优先）。
 - `side_at_screen` 按轴中心线判左右（纵向比 x、横向比 y）；供右键菜单定 Add Thread 的侧。

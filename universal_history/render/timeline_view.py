@@ -9,11 +9,11 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from PyQt6.QtCore import QCoreApplication, QPointF, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QPointF, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QContextMenuEvent, QFont, QKeyEvent, QMouseEvent, QWheelEvent
 from PyQt6.QtCore import QPoint
 from universal_history.chrono.jdn_timestamp import JDNTimestamp
-from PyQt6.QtWidgets import QApplication, QToolTip, QWidget
+from PyQt6.QtWidgets import QApplication, QWidget
 
 from universal_history.models import Event, EventIndex, Workspace
 from universal_history.render.geometry import AXIS_BREADTH, CoordinateSystem
@@ -50,7 +50,8 @@ ITEM_COLORS = [
     QColor(255, 245, 247),
 ]
 from universal_history.render.painter import (
-    item_in_time_range, paint_axis, paint_item, paint_thread_background,
+    item_in_time_range, paint_axis, paint_hover_overlay, paint_item,
+    paint_thread_background,
 )
 
 
@@ -88,9 +89,14 @@ class TimelineView(QWidget):
         # Press position for click-vs-drag discrimination (itemClicked, §8.6/T5-5).
         self._press_pos: Optional[QPointF] = None
         self._hover_item: Optional[EventIndex] = None
-        # Year under the cursor for the period-progress tooltip ("Year N of M");
-        # tracked so the tooltip refreshes as the cursor moves within one item.
+        # Year under the cursor for the period progress hint ("(N/M)");
+        # tracked so the hint refreshes as the cursor moves within one item.
         self._hover_year: Optional[int] = None
+        # Real-time hover overlay (legacy viewer_ex.py real-time tips):
+        # self-drawn crosshair + floating info box following the cursor.
+        # Replaces the earlier Qt toolTip/QToolTip approaches (#39).
+        self._cursor_pos: Optional[QPointF] = None
+        self._tips_enabled = True
 
         # Arrow-key smooth scrolling (restored from legacy History main.py,
         # whose implementation was broken — legacy defect #12).
@@ -518,6 +524,16 @@ class TimelineView(QWidget):
                     self.item_font,
                 )
 
+        # 3. Self-drawn hover overlay (legacy real-time tips): crosshair +
+        # floating info box, in screen coordinates, on top of everything.
+        lines = self._hover_overlay_lines()
+        if lines:
+            qp.resetTransform()
+            paint_hover_overlay(
+                qp, self.width(), self.height(), self._cursor_pos,
+                lines, self.item_font,
+            )
+
         qp.end()
 
     # ------------------------------------------------------------------
@@ -526,10 +542,11 @@ class TimelineView(QWidget):
 
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:
-            QToolTip.hideText()
+            # Hide the hover overlay while dragging (legacy __l_pressing).
             self._drag_last_pos = QPointF(event.pos())
             self._press_pos = QPointF(event.pos())
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            self.update()
 
     def mouseMoveEvent(self, event: QMouseEvent):
         pos = QPointF(event.pos())
@@ -679,55 +696,83 @@ class TimelineView(QWidget):
     # Hover / hit testing
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # Hover: self-drawn crosshair + floating info box (legacy mechanism)
+    # ------------------------------------------------------------------
+
+    def set_real_time_tips_enabled(self, enabled: bool) -> None:
+        """Legacy `enable_real_time_tips`: toggle the hover overlay."""
+        self._tips_enabled = bool(enabled)
+        self.update()
+
+    def real_time_tips_enabled(self) -> bool:
+        return self._tips_enabled
+
     def _update_hover(self, screen_pos: QPointF):
+        # Legacy viewer_ex.on_pos_updated: track the cursor position, the time
+        # under it and the hovered item, then repaint — the overlay itself is
+        # drawn in paintEvent, so the tip text is always computed from the
+        # *current* view state (stays correct across pan/zoom).
+        self._cursor_pos = screen_pos
         item = self._item_at_screen(screen_pos)
-        if item is None:
-            if self._hover_item is not None:
-                self._hover_item = None
-                self._hover_year = None
-                QToolTip.hideText()
-                self.update()
-            return
-
         hover_year = None
-        if not item.event.is_point_event():
-            logical_pos = self.coord.screen_to_logical(screen_pos)
-            hover_time = self.coord.logical_x_to_time(logical_pos.x())
-            hover_year = hover_time.to_gregorian()[0]
-
-        text = self._tooltip_text(item.event, hover_year)
-        if self._hover_item != item.event or hover_year != self._hover_year:
-            self._hover_item = item.event
-            self._hover_year = hover_year
-            self.update()
-        # Legacy behaviour: the tooltip follows the cursor and appears
-        # immediately while moving (a passive widget toolTip property would
-        # only pop up after the cursor rests ~1s — users read that as "hover
-        # info is broken"). Re-show on every move so the popup tracks the
-        # cursor and the "Year N of M" progress stays live.
-        global_pos = self.mapToGlobal(screen_pos.toPoint()) + QPoint(14, 14)
-        QToolTip.showText(global_pos, text, self)
+        if item is not None and not item.event.is_point_event():
+            hover_year = self.time_at_screen(screen_pos).to_gregorian()[0]
+        self._hover_item = item.event if item is not None else None
+        self._hover_year = hover_year
+        self.update()
 
     def leaveEvent(self, event):
-        # Hide the following tooltip when the cursor leaves the view.
-        if self._hover_item is not None:
-            self._hover_item = None
-            self._hover_year = None
-            self.update()
-        QToolTip.hideText()
+        # Clear the overlay when the cursor leaves the view.
+        self._cursor_pos = None
+        self._hover_item = None
+        self._hover_year = None
+        self.update()
         super().leaveEvent(event)
 
-    @classmethod
-    def _period_progress(cls, event: EventIndex, hover_year: int) -> str:
-        """Legacy-style period progress at the cursor: 'Year N of M'
-        (legacy showed 「第N年/共M年」). Year math uses astronomical years;
-        the cursor position is clamped into the event's range."""
-        since_year = event.since.to_gregorian()[0]
-        until_year = event.until.to_gregorian()[0]
-        total = until_year - since_year + 1
-        current = min(max(hover_year, since_year), until_year) - since_year + 1
-        return QCoreApplication.translate("TimelineView", "Year %1 of %2") \
-            .replace("%1", str(current)).replace("%2", str(total))
+    @staticmethod
+    def _era_year(y: int) -> str:
+        """Era-aware year text: 2000 -> '2000', -2999 -> '3000 BC'."""
+        return str(y) if y > 0 else f"{-(y - 1)} BC"
+
+    def _hover_overlay_lines(self) -> Optional[List[str]]:
+        """Tip lines for the hover overlay, or None when it must not show.
+
+        Line 1 is always the time under the cursor — legacy
+        `(year/month/day)`, era-aware here. Line 2 (only when hovering an
+        item) is the legacy item tip: abstract, point events get
+        ` : [date]`, period events get `(N/M) : [start - end]` with the
+        cursor-year progress (legacy 「第N年/共M年」)."""
+        if not self._tips_enabled or self._cursor_pos is None:
+            return None
+        if self._drag_last_pos is not None:
+            # Legacy hid the tips while the left button was pressed.
+            return None
+
+        t = self.time_at_screen(self._cursor_pos)
+        y, m, d, *_ = t.to_gregorian()
+        lines = [f"({self._era_year(y)}/{m:02d}/{d:02d})"]
+
+        event = self._hover_item
+        if event is not None:
+            tip = (event.abstract or "").strip()
+            if event.is_point_event():
+                tip += f" : [{self._format_date_text(event.since)}]"
+            else:
+                since_year = event.since.to_gregorian()[0]
+                until_year = event.until.to_gregorian()[0]
+                total = until_year - since_year + 1
+                hy = self._hover_year if self._hover_year is not None else since_year
+                current = min(max(hy, since_year), until_year) - since_year + 1
+                tip += f"({current}/{total})"
+                tip += f" : [{self._era_year(since_year)} - {self._era_year(until_year)}]"
+            if tip:
+                lines.append(tip)
+        return lines
+
+    def _format_date_text(self, ts: JDNTimestamp) -> str:
+        y, m, d, *_ = ts.to_gregorian()
+        return f"{self._era_year(y)}-{m:02d}-{d:02d}"
 
     def thread_at_screen(self, screen_pos: QPointF) -> Optional[ThreadLayout]:
         """Return the thread whose item is under the screen point, or None."""
@@ -775,22 +820,6 @@ class TimelineView(QWidget):
                 if item.rect().contains(logical_pos):
                     return item
         return None
-
-    @classmethod
-    def _tooltip_text(cls, event: EventIndex, hover_year: Optional[int] = None) -> str:
-        y, m, d, *_ = event.since.to_gregorian()
-        era = "BC" if y <= 0 else "AD"
-        display_year = -(y - 1) if y <= 0 else y
-        time_text = f"{display_year} {era}-{m:02d}-{d:02d}"
-        if event.is_point_event():
-            return f"{time_text}\n{event.abstract}"
-        ye, me, de, *_ = event.until.to_gregorian()
-        era_e = "BC" if ye <= 0 else "AD"
-        display_year_e = -(ye - 1) if ye <= 0 else ye
-        text = f"{time_text} ~ {display_year_e} {era_e}-{me:02d}-{de:02d}\n{event.abstract}"
-        if hover_year is not None:
-            text += f"\n{cls._period_progress(event, hover_year)}"
-        return text
 
     # ------------------------------------------------------------------
     # Workspace slots

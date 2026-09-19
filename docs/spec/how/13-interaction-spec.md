@@ -14,7 +14,7 @@
 | 横/纵切换 Ctrl+T | [06-geometry.md](06-geometry.md) §5 | 旧版坏损，新版实现 |
 | 单点/持续统一轨道分配、末轨兜底 | [07-layout.md](07-layout.md) | 优化（§8.5 决策） |
 | 事件 chip/bar 样式、省略号截断、远端 marker | [08-painting.md](08-painting.md) | 优化（§8.6 决策） |
-| 悬停 Qt Tooltip | [09-timeline-view.md](09-timeline-view.md) §6 | 差异（放弃自绘十字线方案） |
+| 悬停自绘十字线 + 浮动提示框 | [09-timeline-view.md](09-timeline-view.md) §6 | 机制继承（2026-09-19 定稿恢复）；显示优化为深色圆角框 |
 | 右键菜单（含事件级 Edit/Delete） | [10-main-window.md](10-main-window.md) §3 | 优化（精确到事件） |
 | Thread share/换侧/排序 | [12-dialogs.md](12-dialogs.md) §2 | 优化（旧版宽度不可调） |
 | 编辑器校验/Lock/落盘/删除确认 | [11-editor.md](11-editor.md) | 继承 + 定点修复 |
@@ -28,13 +28,13 @@
 
 | 行为 | Legacy 参照 | 备注 |
 | --- | --- | --- |
-| 主/副刻度双层体系（主 ±15px / 副 ±5px、副刻度不足半步省略规则） | `how/08-timeline-rendering.md` §4 | 新版现为单层；实现时应结合 `zoom_design.md` 的淡入淡出方案 |
-| 时/分/秒级刻度（1 天 → 副 4/2/1 小时） | 同上 | 新版最小层级为「日」 |
-| 悬停十字准线 + 持续事件「第N年/共M年」进度 | `how/08-timeline-rendering.md` §8 | 旧版有；新版 Tooltip 无进度 |
+| 主/副刻度双层体系（主 ±15px / 副 ±5px、副刻度不足半步省略规则） | `how/08-timeline-rendering.md` §4 | **已实现（P9）**：LOD 多层淡入淡出取代六元组方案（02 §6） |
+| 时/分/秒级刻度（1 天 → 副 4/2/1 小时） | 同上 | **已实现（F8）**：Hour/Minute 层级已注册（02 §6） |
+| 悬停十字准线 + 持续事件「第N年/共M年」进度 | `how/08-timeline-rendering.md` §8 | **已实现（2026-09-19）**：自绘十字线 + 浮动提示框随光标，含 `(N/M)` 进度（09 §6） |
 | 刻度像素精确吸附（`__optimise_pixel`） | `how/08-timeline-rendering.md` §3 | 新版直接线性反算 |
-| 方向键平滑滚动 | `how/10-interactions.md`（旧版坏损） | 若实现应修复而非复刻 |
+| 方向键平滑滚动 | `how/10-interactions.md`（旧版坏损） | **已实现（P7）**：修复后移植，速度随缩放自适应 |
 | 时间范围/缩放限制 API | `how/08-timeline-rendering.md` §3 | 未移植 |
-| 单击展开详情、密集聚簇 | `migration_analysis.md` §8.6 | 预留增强 |
+| 单击展开详情、密集聚簇 | `migration_analysis.md` §8.6 | 单击详情**已实现（F4）**；密集聚簇仍预留 |
 | depot 浏览器（文件重命名等） | `how/11-editor.md` §10 | 未移植；**有意不带回编辑器**——文件管理从编辑器剥离（[14-event-ownership.md](14-event-ownership.md) O6） |
 | filter 预设存盘（.hisfilter） | `how/06-filter.md` | 路线图；若实现统一 utf-8 |
 | 退出确认框 | `how/12-main-window.md` §4 | **已定（2026-09-18）**：恢复退出提示；文案走 i18n（英文源文案，支持多语言） |

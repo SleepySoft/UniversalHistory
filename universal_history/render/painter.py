@@ -364,3 +364,64 @@ def paint_item(
 
     # Restore the logical transform for subsequent geometry.
     qp.setTransform(coord.transform())
+
+
+# Hover overlay styling (self-drawn replacement for Qt tooltips — the legacy
+# viewer drew a crosshair plus a blue box at the cursor; the palette here is
+# the modernised variant used by the web frontend).
+CROSSHAIR_COLOR = QColor(60, 60, 60, 150)
+TIP_BOX_FILL = QColor(30, 30, 30, 235)
+TIP_BOX_TEXT = QColor(240, 240, 240)
+TIP_OFFSET = 14
+TIP_PAD_X = 8
+TIP_PAD_Y = 5
+
+
+def paint_hover_overlay(
+    qp: QPainter,
+    width: float,
+    height: float,
+    cursor_pos: QPointF,
+    lines: list,
+    font: QFont,
+) -> None:
+    """Draw the real-time hover overlay in screen coordinates.
+
+    Mechanism ported from legacy viewer_ex.paint_real_time_tips: a full-span
+    crosshair through the cursor plus a floating info box next to it. The box
+    flips to the left/above when it would overflow the viewport (legacy only
+    flipped horizontally; vertical flipping is the display optimisation).
+    """
+    x, y = cursor_pos.x(), cursor_pos.y()
+
+    # 1. Crosshair through the cursor, spanning the whole viewport.
+    qp.setPen(QPen(CROSSHAIR_COLOR, 1, Qt.PenStyle.DashLine))
+    qp.drawLine(QPointF(0, y), QPointF(width, y))
+    qp.drawLine(QPointF(x, 0), QPointF(x, height))
+
+    # 2. Floating info box.
+    qp.setFont(font)
+    fm = QFontMetrics(font)
+    line_h = fm.height()
+    text_w = max(fm.horizontalAdvance(s) for s in lines)
+    box_w = text_w + 2 * TIP_PAD_X
+    box_h = line_h * len(lines) + 2 * TIP_PAD_Y
+
+    bx = x + TIP_OFFSET
+    by = y + TIP_OFFSET
+    if bx + box_w > width:
+        bx = x - TIP_OFFSET - box_w
+    if by + box_h > height:
+        by = y - TIP_OFFSET - box_h
+
+    rect = QRectF(bx, by, box_w, box_h)
+    qp.setPen(Qt.PenStyle.NoPen)
+    qp.setBrush(TIP_BOX_FILL)
+    qp.drawRoundedRect(rect, 4.0, 4.0)
+
+    qp.setPen(TIP_BOX_TEXT)
+    for i, s in enumerate(lines):
+        qp.drawText(
+            QPointF(bx + TIP_PAD_X, by + TIP_PAD_Y + fm.ascent() + i * line_h),
+            s,
+        )
