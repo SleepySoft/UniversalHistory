@@ -42,10 +42,70 @@
 - **resize**：重排（Qt 自行触发重绘）。
 - **可见性裁剪（P9）**：`paintEvent` 与 `_item_at_screen` 经 `painter.item_in_time_range` 按可见时间范围（含约 120px/scale 边距）裁剪，大数据集不再每帧 O(N) 全量绘制；**布局不裁剪**以保持轨道稳定。
 
-## 6. 悬停与命中
+## 6. 悬停实时提示（十字线 + 浮动信息框）
 
-- `_update_hover`：记录光标位置/悬停 item/光标年，触发重绘；overlay 在 `paintEvent` 末尾以屏幕坐标自绘——**十字线**（过光标的水平+垂直虚线通长直线）+ **浮动信息框**（跟随光标，出边界自动翻转；深色圆角为显示优化，机制与旧版一致）。提示内容逐行：①光标处时间 `(y/mm/dd)`（era-aware，如 `(3000 BC/01/01)`）；②悬停 item 时追加旧版条目提示——摘要，单点事件 ` : [日期]`，持续事件 `(N/M)` 光标年进度 + ` : [起 - 止]`（旧版「第N年/共M年」原格式）。拖动时隐藏（legacy `__l_pressing`），`set_real_time_tips_enabled()` 可开关（legacy `enable_real_time_tips`）。**2026-09-19 定稿**：弃用 Qt toolTip/QToolTip 方案（#39 结论），全面恢复旧版自绘实时提示机制；回归测试 `tests/render_tests/test_hover_overlay.py`。
-- `_tooltip_text`：`"{year} {era}-MM-DD"`（era 为 BC/AD 后缀）；单点 → `时间\n摘要`；持续 → `起 ~ 止\n摘要`。
+> 旧版出处：`viewer_ex.py` 的 `paint_real_time_tips` / `format_real_time_tip` / `on_pos_updated` / `HistoryIndexBar.get_tip_text`。
+> 该功能是本项目反复次数最多的堵点（三次返工，见 §6.6 复盘），本节为定稿后的完整行为规格。
+
+### 6.1 功能定义（用户可见行为）
+
+光标在时间轴上移动时，**立即**（无停留延迟）出现：
+
+1. **十字线**：过光标的水平 + 垂直两条通长虚线；
+2. **浮动信息框**：跟随光标，内容为
+   - 第 1 行（始终显示）：光标处的日期 `(yyyy/mm/dd)`，公元前为 `(xxxx BC/mm/dd)`；
+   - 第 2 行（光标在事件上时追加）：事件摘要；单点事件附 ` : [日期]`；持续事件附 `(N/M)`（光标所在年第 N 年 / 共 M 年，天文纪年差值，钳入事件区间）与 ` : [起年 - 止年]`；
+3. 左键拖动时整个 overlay 隐藏；光标离开控件即消失；可用 `set_real_time_tips_enabled()` 整体关闭。
+
+### 6.2 与旧版逐项对照
+
+| 旧版机制 | 新版实现 | 差异 |
+| --- | --- | --- |
+| 黑色实线十字线，全视口通长 | 深灰半透明**虚线**十字线 | 显示优化（弱化视觉噪音） |
+| 浮动框 `(year/month/day)`，年份原始整数（公元前为负数） | `(yyyy/mm/dd)`，**era-aware**（`3000 BC/01/01`） | 显示优化 |
+| 蓝底（36,169,225）矩形黑字，单行拼接 `tip \| item` | 深色圆角半透明框白字，**两行**（光标时间 / item 提示） | 显示优化 |
+| item 提示：摘要 + 单点 `: [年份]` / 持续 `(N/M) : [起 - 止]` | **逐项保留**：摘要 + 单点 `: [完整日期]` / 持续 `(N/M) : [起 - 止]`（年份 era-aware） | 单点升级为完整日期（信息超集） |
+| 拖动中隐藏（`__l_pressing`） | 拖动中隐藏（`_drag_last_pos` 非 None 时不绘） | 一致 |
+| `enable_real_time_tips(bool)` 开关 | `set_real_time_tips_enabled(bool)` | 一致 |
+| 出右边界左翻 | 出右/下边界左/上翻 | 增强（旧版只处理横向） |
+| 鼠标移动 → 记状态 → repaint | 同（`mouseMoveEvent` → `_update_hover` → `update()`） | 一致 |
+| 提示内容按移动时刻的状态计算 | **按 paint 时刻的当前视图状态计算**（`time_at_screen(_cursor_pos)`） | 增强：平移/缩放后光标不动文本也正确 |
+
+### 6.3 状态机与绘制管线
+
+- 状态：`_cursor_pos`（屏幕坐标，None=光标不在控件内）、`_hover_item`（EventIndex|None）、`_hover_year`（持续事件光标年）、`_tips_enabled`。
+- 入口：`mouseMoveEvent` 非拖动分支 → `_update_hover(pos)`；`leaveEvent` → 清空全部状态。
+- 绘制：`paintEvent` 末尾，`qp.resetTransform()` 后在**屏幕坐标**绘制（`painter.paint_hover_overlay`）——overlay 不属于逻辑坐标系，不参与锚点/缩放变换；横纵两种方向共用同一套绘制。
+- 判定顺序（`_hover_overlay_lines()`）：`tips 关闭 → 无光标 → 拖动中` 任一为真则不绘。
+
+### 6.4 与其他子系统的交互（易错点）
+
+- **命中测试**复用 `_item_at_screen`（含可见性裁剪 +120px/scale 边距），保证「看得见才提示」；
+- 持续事件进度年 = `time_at_screen(cursor).year`，钳入 `[since_year, until_year]`；注意 `until` 为起始日语义（1990–2010 的条最右 1px 仍在 2009 年，进度 `(20/21)`，`21/21` 只在 2010-01-01 边界点——测试锁定）；
+- 平移/缩放后 `_cursor_pos` 不变但世界已变：因文本在 paint 时重算，无需额外处理（**这是相对旧版的实质增强**）；
+- 拖动起点 `mousePressEvent` 只置 `_drag_last_pos`，overlay 由判定顺序自然隐藏，无需显式清除。
+
+### 6.5 不变式（测试锁定，`tests/render_tests/test_hover_overlay.py`）
+
+1. 光标在控件内且非拖动 → 第 1 行恒为光标处日期；
+2. 悬停 item 才有第 2 行；单点含 ` : [` 日期、持续含 `(N/M)` 与 ` : [起 - 止]`；
+3. 拖动中 / `set_real_time_tips_enabled(False)` / `leaveEvent` 后 → overlay 不绘；
+4. 进度随光标在事件内移动跨年刷新；BCE 年份显示为 `xxxx BC`。
+
+### 6.6 堵点复盘（三次返工的根因与教训）
+
+| 迭代 | 方案 | 失败根因 |
+| --- | --- | --- |
+| v1 | widget `toolTip` 属性（被动弹出） | Qt 语义不匹配：被动 tooltip 要求光标**静止约 1 秒**，移动中永不出现；用户操作习惯是边移动边找事件，感知为「功能没有」。且这是实现时擅自「降级」（偏离旧版跟随式弹窗）未用户确认 |
+| v2 | `QToolTip.showText` 主动跟随（#39 第一版修复） | 弹出逻辑对了，但仍是 Qt 原生弹窗：样式不可控、与旧版十字线机制不符；用户明确要自绘机制 |
+| v3 | 自绘十字线 + 浮动框（**定稿**） | — |
+
+教训（已固化进 `docs/testing.md` 与本节）：
+
+1. **「降级」实现必须在规格中显式登记并取得用户确认**——v1 的 tooltip 降级埋在 11-editor.md 一句注记里，用户按旧版预期验收必然不通过；
+2. **offscreen 测不出真实弹窗行为**——v1 的单测（文本内容断言）全绿但用户看不到东西；视觉类功能必须截图目验 + 真实平台冒烟；
+3. **先对齐旧版功能清单再谈优化**——v2/v3 分歧本质是对「机制」还是「形式」有异议；逐项对照表（§6.2）就是为此而设，功能一项不能少，形式单列出清。
+
 - 命中链：屏幕点 → `screen_to_logical` → 各 Thread `item_at_logical`（逆序，chip 优先）。
 - `side_at_screen` 按轴中心线判左右（纵向比 x、横向比 y）；供右键菜单定 Add Thread 的侧。
 
@@ -54,3 +114,6 @@
 - 几何：默认 offset 0.5 两侧均分；逻辑原点映射 `(width/2, axis_center)`；
 - 布局：单点卡片逻辑宽恒 120px；重叠分轨、不重叠复用轨；**单点不强制轨 0**；min_track_width 影响轨数、下限 1.0；
 - 视图：切方向不崩溃；share 归一化；纵向模式 right Thread 仍在屏幕右侧；refresh_source("") no-op。
+- 平移锚点（`test_pan_moves_items.py`）：拖动使事件条屏幕位置精确偏移；命中测试跟随；漂移超阈值重锚无跳变；
+- 悬停 overlay（`test_hover_overlay.py`）：§6.5 不变式全锁；
+- 交互注入（`test_interactions.py`）：拖动/单击判别、滚轮平移、Ctrl 锚定缩放、方向键滚动、双击/右键/快速录入信号。
