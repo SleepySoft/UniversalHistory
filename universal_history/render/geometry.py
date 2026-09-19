@@ -19,8 +19,10 @@ from universal_history.chrono.jdn_timestamp import JDNTimestamp
 
 # Pixels reserved for the central axis strip.  This constant is used by both
 # the coordinate system (to compute left/right space budgets) and the timeline
-# view (to lay out threads).
-AXIS_BREADTH = 30
+# view (to lay out threads).  Wide enough to hold the baseline, downward ticks
+# and a full line of labels without crowding (was 30 — too tight, labels
+# touched the line and straddling ticks overlapped the text).
+AXIS_BREADTH = 60
 
 
 @dataclass

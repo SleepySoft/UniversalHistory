@@ -9,13 +9,24 @@ from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
 
 from universal_history.chrono.jdn_timestamp import JDNTimestamp
 from universal_history.chrono.tick_stepper import TickLevel, TickStepper
-from universal_history.render.geometry import CoordinateSystem
+from universal_history.render.geometry import AXIS_BREADTH, CoordinateSystem
 from universal_history.render.layout import ItemLayout, ThreadLayout
 
 
 AXIS_LINE_WIDTH = 2
-TICK_LENGTH = 6
-LABEL_OFFSET = 12
+
+# Axis strip geometry (2026-09-19 redesign): ticks hang DOWNWARD from the
+# baseline into the strip (+y side, logical), labels sit below the ticks with
+# real clearance.  Ticks no longer straddle the baseline (they used to cross
+# ±6 px and visually collide with the labels above).
+TICK_MAJOR_LEN = 9.0
+TICK_MINOR_LEN = 4.0
+TICK_DEMOTE_LEN = 7.0
+LABEL_TOP = 14.0  # logical y of the label text's top edge (below the ticks)
+
+# The axis strip is painted as a distinct, slightly cooler band so the ruler
+# reads as its own element against the warm canvas background.
+AXIS_STRIP_FILL = QColor(252, 250, 251)
 
 # LOD fade thresholds (docs/zoom_design.md §3): a tick level fades in between
 # TICK_FADE_MIN_PX and TICK_FADE_FULL_PX of on-screen spacing, is the major
@@ -195,21 +206,31 @@ def paint_axis(
     text_color: QColor,
     font: QFont,
 ) -> None:
-    """Paint the central axis line and tick labels.
+    """Paint the central axis strip: band background, baseline, ticks, labels.
 
     Renders all visible tick layers (zoom_design.md): coarse layers first as
     background, then finer layers on top. Minor (fading-in) layers draw short
     ticks without labels; major layers draw full ticks and labels; demoted
     layers stay as faint background scales.
+
+    Geometry: ticks hang downward from the baseline (+y, into the strip) and
+    labels sit below them. In vertical mode the rotation maps +y to the
+    screen-left, so labels end up left of the axis — same side as the legacy
+    vertical layout.
     """
     vp = coord.viewport()
     half_len = vp.length / 2
-    # The axis line must span the *current* viewport, not the layout anchor:
-    # while panning, logical X 0 stays at the anchor time, so centre the line
-    # on the view centre's logical position.
+    # The axis must span the *current* viewport, not the layout anchor:
+    # while panning, logical X 0 stays at the anchor time, so centre the
+    # strip on the view centre's logical position.
     cx = coord.center_logical_x()
 
-    # Apply the unified logical coordinate transform for geometry.
+    # 0. Strip background — a distinct ruler band (transverse ±AXIS_BREADTH/2).
+    qp.setPen(Qt.PenStyle.NoPen)
+    qp.setBrush(AXIS_STRIP_FILL)
+    qp.drawRect(QRectF(cx - half_len, -AXIS_BREADTH / 2, vp.length, AXIS_BREADTH))
+
+    # 1. Baseline.
     qp.setPen(QPen(axis_color, AXIS_LINE_WIDTH))
     qp.drawLine(QPointF(cx - half_len, 0), QPointF(cx + half_len, 0))
 
@@ -220,24 +241,28 @@ def paint_axis(
         c.setAlphaF(max(0.0, min(1.0, alpha)))
         return c
 
-    # 1. Tick marks, coarse (background) -> fine (foreground).
+    # 2. Tick marks, coarse (background) -> fine (foreground); downward only.
     for level, ticks, alpha, role in reversed(layers):
         if role == "minor":
-            length = TICK_LENGTH / 2
+            length = TICK_MINOR_LEN
             layer_alpha = alpha
+            pen_w = 1.0
         elif role == "demoted":
-            length = TICK_LENGTH * 1.5
+            length = TICK_DEMOTE_LEN
             layer_alpha = 0.3  # strategy A: faded background reference
+            pen_w = 1.0
         else:
-            length = TICK_LENGTH
+            length = TICK_MAJOR_LEN
             layer_alpha = alpha
-        qp.setPen(QPen(_faded(tick_color, layer_alpha), 1))
+            pen_w = 1.5  # major ticks slightly bolder for visual hierarchy
+        qp.setPen(QPen(_faded(tick_color, layer_alpha), pen_w))
         for tick in ticks:
             x = coord.time_to_logical_x(tick)
-            qp.drawLine(QPointF(x, -length), QPointF(x, length))
+            qp.drawLine(QPointF(x, 0), QPointF(x, length))
 
-    # 2. Labels in screen coordinates so they stay upright; only major and
-    # demoted (watermark) layers get labels.
+    # 3. Labels in screen coordinates so they stay upright; only major and
+    # demoted (watermark) layers get labels. Labels sit below the tick tips
+    # (left of the axis in vertical mode), clear of the baseline.
     qp.save()
     qp.resetTransform()
     qp.setFont(font)
@@ -250,20 +275,21 @@ def paint_axis(
         qp.setPen(_faded(text_color, label_alpha))
         for tick in ticks:
             x = coord.time_to_logical_x(tick)
-            # Place labels on the side of the axis that is not covered by
-            # threads (above in horizontal mode, to the right in vertical).
-            screen_pos = coord.logical_to_screen(QPointF(x, -LABEL_OFFSET))
             text = _format_tick_label(tick, level)
+            screen_pos = coord.logical_to_screen(QPointF(x, LABEL_TOP))
 
             if coord.is_vertical:
-                draw_x = screen_pos.x() + 4
-                draw_y = screen_pos.y() + fm.ascent() / 2
+                # +y maps to screen-left: right-align the text just outside
+                # the tick zone, vertically centred on the tick.
+                rect = QRectF(0, screen_pos.y() - fm.height() / 2,
+                              screen_pos.x() - 4, fm.height())
+                qp.drawText(rect, Qt.AlignmentFlag.AlignRight
+                            | Qt.AlignmentFlag.AlignVCenter, text)
             else:
-                text_width = fm.horizontalAdvance(text)
-                draw_x = screen_pos.x() - text_width / 2
-                draw_y = screen_pos.y() + fm.ascent()
-
-            qp.drawText(QPointF(draw_x, draw_y), text)
+                rect = QRectF(screen_pos.x() - 200, screen_pos.y(),
+                              400, fm.height())
+                qp.drawText(rect, Qt.AlignmentFlag.AlignHCenter
+                            | Qt.AlignmentFlag.AlignTop, text)
 
     # Restore the logical transform explicitly (no implicit contract).
     qp.restore()

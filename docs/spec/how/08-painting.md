@@ -4,7 +4,7 @@
 
 ## 1. 常量与配色
 
-- 轴线宽 2px；刻度线长 ±6px；标签偏移 12px。
+- 轴线宽 2px；刻度单侧下挂：major 9px（1.5px 宽，层次更重）/ minor 4px / demoted 7px；标签顶缘距基线 14px（LABEL_TOP），刻度与标签之间有 5px 净间距；轴带 `AXIS_BREADTH = 60`（geometry.py），轴带底色 `AXIS_STRIP_FILL = (252,250,251)`，与暖色画布区分出独立的「尺子」区。
 - `POINT_EVENT_FILL = (243,244,246)` 浅灰——继承旧版单点事件背景色；持续事件用 Thread 的 item color（默认青绿 `(185,227,217)`）。
 - TimelineView 侧配色（`timeline_view.py`）：背景 `(255,245,247)`、轴 `(120,120,120)`、刻度 `(100,100,100)`、文字 `(50,50,50)`；刻度字体 "Segoe UI" 9pt、item 字体微软雅黑 8pt（旧版单点 6pt/持续 8pt 双字体，新版统一 8pt）。
 - Thread 调色板 16 色 + ITEM_COLORS 6 色，数值沿用旧版（注释 "borrowed from the reference History project"）；**取色规则修正**：`len(left)+len(right)` 直接取模（第一个 Thread 用第 1 色；旧版先 +1 再取模跳过首色）。测试锁定「相邻 Thread 不同色」。
@@ -20,10 +20,11 @@
 
 ## 3. 轴与刻度（paint_axis）
 
-- 在逻辑变换激活状态画轴线 `(-half_len, 0)→(half_len, 0)`；
-- 刻度线 y∈[-6,6] 竖线——**当前无主次刻度之分**；
-- **标签在屏幕坐标绘制**：先 `resetTransform()` 保证文字不旋转；标签放轴的「无 Thread 覆盖侧」（水平模式上方、垂直模式右侧）；水平模式文字水平居中于刻度，垂直模式放刻度右侧 4px 垂直居中；
-- 副作用：函数结束时 transform 处于 reset 状态**不恢复**——依赖调用方重设（隐式契约，脆弱点）。
+- **轴带（2026-09-19 重设计）**：先填 `AXIS_STRIP_FILL` 轴带背景（横向 ±30px），再画基线——轴区读作独立的尺子，不再是光秃秃一根线；
+- 基线在逻辑 y=0 横贯当前视口（按 `center_logical_x()` 定位）；
+- **刻度只向 +y 单侧悬挂**（major 9px / minor 4px / demoted 7px），不再 ±6px 上下穿——旧设计上行刻度与标签互相叠压（用户报告）；纵向模式由旋转自动转置为「向左」；
+- **标签在屏幕坐标绘制**：先 `resetTransform()` 保证文字不旋转；标签位于刻度尖端下方（`LABEL_TOP=14`），水平模式 `AlignHCenter|AlignTop` 居中于刻度，垂直模式在轴左侧右对齐、垂直居中于刻度（与旧版纵向标签方位一致）；
+- 标签绘制段用 `qp.save()`/`qp.restore()` 包裹，`resetTransform()` 不泄漏——函数进出 transform 状态一致（旧文档记的「不恢复」隐式契约已随 save/restore 消除）。
 
 ## 4. 事件绘制（paint_item）
 
@@ -45,6 +46,6 @@
 | 持续图形 | 直角纯色矩形 | 圆角矩形 + 深色描边 |
 | 文字 | 居中 WordWrap 无截断 | 左对齐 ElideRight 省略号 |
 | 字体 | 单点 6pt / 持续 8pt | 统一 8pt |
-| 主/副刻度 | 两级线长 ±15/±5px | 多层 LOD：minor 半长刻度 / major 全长带标签 / demoted 淡背景（P9 已实现，见 [02-tick-stepper.md](02-tick-stepper.md) §6） |
-| 刻度标签 | 按最高非零位选格式、BC 前缀 | Year/Month/Day 特判、BC 后缀 |
+| 主/副刻度 | 两级线长 ±15/±5px 上下穿轴 | 多层 LOD（minor 4 / major 9 / demoted 7px），**单侧下挂不越轴**（2026-09-19），major 1.5px 加粗 |
+| 刻度标签 | 按最高非零位选格式、BC 前缀；轴下方 ±15 刻度之外 | Year/Month/Day 特判、BC 后缀；轴带内刻度下方（LABEL_TOP=14），与基线净距 5px |
 | 悬停提示 | 自绘十字线 + 蓝色提示框 + 进度 | 自绘十字线 + 深色圆角提示框 + 进度（2026-09-19 恢复自绘机制，见 [09-timeline-view.md](09-timeline-view.md) §6） |
