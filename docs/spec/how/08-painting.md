@@ -27,20 +27,24 @@
 
 ## 4. 事件绘制（paint_item）
 
-- **远端单点退化**：chip 实际时间跨度 > 2 年（硬编码阈值）时只画 2px 竖线 marker，无文字——防止缩远时固定宽卡片伪装成持续事件（新增行为，旧版没有）。
+- **远端单点退化**：chip 实际时间跨度 > 2 年（硬编码阈值）时只画 2px 竖线 marker（位于精确时刻 = 卡片左缘）+ 轴上圆点，无文字——防止缩远时固定宽卡片伪装成持续事件（新增行为，旧版没有）。
 - 正常绘制：**圆角矩形 radius=4**，边框为填充色加深 20%（§8.6「圆角卡片/Chip」落地；旧版单点是带箭头五边形、持续是直角矩形）。
-- 单点额外画一条**贯穿卡片的竖直 pin 线**标记精确时刻（区分 period bar）。
+- **单点「棒棒糖」结构（2026-09-19 重设计，取代居中 chip + 中央 pin 线）**：
+  - 卡片**左缘锚定在事件时刻**（`x0 = time_x`，`layout.py`），不再以时刻居中——消除「卡片散、时刻靠猜」；
+  - **轴上圆点**（r=3，深灰 `POINT_DOT_COLOR`）落在逻辑 y=0 的精确时刻——沿轴即可读点；
+  - **引线（stem）**：从卡片靠轴侧边缘连到轴点（中灰 `POINT_STEM_COLOR`，1px），穿越中间轨道属预期（主流时间轴工具如 Knight Lab Timeline 同款 lollipop 惯例）；
+  - 引线/圆点在卡片**之前**绘制（压在卡片底下）；横纵切换由统一逻辑坐标自动转置，无特判。
 - 文字：`resetTransform` 后取 `screen_rect`，内缩 4px padding；宽或高 ≤0 不画；**`elidedText(ElideRight)` 省略号截断**（§8.6 落地；旧版 WordWrap 无截断）；左对齐 + 垂直居中。
-- Thread 背景：整行填充 `(-half_len, y0, length, height)`。
+- Thread 背景：整行填充（按 `center_logical_x()` 铺满当前视口，见 [06-geometry.md](06-geometry.md) §3）。
 
 ## 5. 与旧版绘制的逐项对照
 
 | 项 | 旧版 | 新版 |
 | --- | --- | --- |
-| 单点图形 | 10px 箭头五边形指向轴 | 圆角 chip + pin 竖线；远端退化为 marker |
+| 单点图形 | 10px 箭头五边形指向轴 | 棒棒糖：轴上圆点 + 引线 + 左缘锚定圆角 chip（2026-09-19 重设计）；远端退化为 marker + 轴点 |
 | 持续图形 | 直角纯色矩形 | 圆角矩形 + 深色描边 |
 | 文字 | 居中 WordWrap 无截断 | 左对齐 ElideRight 省略号 |
 | 字体 | 单点 6pt / 持续 8pt | 统一 8pt |
 | 主/副刻度 | 两级线长 ±15/±5px | 多层 LOD：minor 半长刻度 / major 全长带标签 / demoted 淡背景（P9 已实现，见 [02-tick-stepper.md](02-tick-stepper.md) §6） |
 | 刻度标签 | 按最高非零位选格式、BC 前缀 | Year/Month/Day 特判、BC 后缀 |
-| 悬停提示 | 自绘十字线 + 蓝色提示框 + 进度 | Qt 原生 Tooltip（见 [09-timeline-view.md](09-timeline-view.md)） |
+| 悬停提示 | 自绘十字线 + 蓝色提示框 + 进度 | 自绘十字线 + 深色圆角提示框 + 进度（2026-09-19 恢复自绘机制，见 [09-timeline-view.md](09-timeline-view.md) §6） |

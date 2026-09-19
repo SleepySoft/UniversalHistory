@@ -302,6 +302,35 @@ def paint_thread_background(
     qp.fillRect(rect, thread.track_color)
 
 
+AXIS_DOT_RADIUS = 3.0
+# Stem/dot use a fixed mid-gray: the point-card fill is very light, so a
+# colour derived from it would be invisible on the white axis strip.
+POINT_STEM_COLOR = QColor(110, 110, 110, 220)
+POINT_DOT_COLOR = QColor(90, 90, 90)
+
+
+def _paint_axis_dot(qp: QPainter, x: float, color: QColor) -> None:
+    """Small dot on the axis (logical y = 0) marking the exact instant."""
+    qp.setPen(QPen(POINT_DOT_COLOR.darker(140), 1))
+    qp.setBrush(POINT_DOT_COLOR)
+    qp.drawEllipse(QPointF(x, 0), AXIS_DOT_RADIUS, AXIS_DOT_RADIUS)
+
+
+def _paint_point_stem(qp: QPainter, rect: QRectF, color: QColor) -> None:
+    """Stem from the card's axis-side edge down/up to the axis, with the dot.
+
+    rect.left() is the event instant (left-edge anchored, see layout.py).
+    The stem makes the temporal anchor explicit: you can follow the line to
+    read exactly where on the axis the event sits.
+    """
+    x = rect.left()
+    # Inner edge = the card edge nearer the axis (y sign differs per side).
+    inner_y = rect.top() if abs(rect.top()) < abs(rect.bottom()) else rect.bottom()
+    qp.setPen(QPen(POINT_STEM_COLOR, 1))
+    qp.drawLine(QPointF(x, inner_y), QPointF(x, 0))
+    _paint_axis_dot(qp, x, color)
+
+
 def paint_item(
     qp: QPainter,
     coord: CoordinateSystem,
@@ -310,39 +339,40 @@ def paint_item(
     text_color: QColor,
     font: QFont,
 ) -> None:
-    """Paint a single event item: rectangle in logical coords, text in screen."""
+    """Paint a single event item: rectangle in logical coords, text in screen.
+
+    Point events use the "lollipop" idiom (mainstream timeline tools such as
+    Knight Lab Timeline): a dot on the axis at the exact instant, a thin stem
+    from the dot to the card, and the card anchored at its left edge — the
+    temporal anchor is visually explicit instead of a centered chip with an
+    unexplained pin through it.
+    """
     rect = item.rect()
 
     fill_color = POINT_EVENT_FILL if item.is_point else color
 
     # When a point event is zoomed far out, its fixed 120 px card would span
-    # centuries and look like a period bar. In that case draw a thin marker.
+    # centuries and look like a period bar. In that case draw a thin marker
+    # at the exact instant plus the axis dot.
     if item.is_point:
         one_year_us = int(365.2425 * 24 * 3600 * 1_000_000)
         point_span_us = rect.width() / coord.scale if coord.scale else 0
         if point_span_us > 2 * one_year_us:
-            center_x = (rect.left() + rect.right()) / 2
+            x0 = rect.left()
             qp.setPen(QPen(fill_color, 2))
-            qp.drawLine(
-                QPointF(center_x, rect.top()), QPointF(center_x, rect.bottom())
-            )
+            qp.drawLine(QPointF(x0, rect.top()), QPointF(x0, rect.bottom()))
+            _paint_axis_dot(qp, x0, fill_color)
             qp.setTransform(coord.transform())
             return
+
+    if item.is_point:
+        _paint_point_stem(qp, rect, fill_color)
 
     # Draw the geometry with the logical transform active.
     radius = 4.0
     qp.setBrush(fill_color)
     qp.setPen(QPen(fill_color.darker(120), 1))
     qp.drawRoundedRect(rect, radius, radius)
-
-    if item.is_point:
-        # Mark the exact instant with a vertical pin line so point events are
-        # visually distinguishable from period bars.
-        center_x = (rect.left() + rect.right()) / 2
-        qp.setPen(QPen(text_color, 1))
-        qp.drawLine(
-            QPointF(center_x, rect.top()), QPointF(center_x, rect.bottom())
-        )
 
     # Draw text in screen coordinates so it is never rotated.
     qp.resetTransform()

@@ -145,7 +145,6 @@ class ThreadLayout:
         # x0/x1 are in logical pixels (screen pixels before the final
         # orientation transform). Margins are therefore constant pixels.
         margin_logical = EVENT_MARGIN_PIXELS
-        half_point_width = POINT_EVENT_PIXEL_WIDTH / 2
 
         self.items.clear()
         for event in sorted_events:
@@ -156,8 +155,11 @@ class ThreadLayout:
             time_x = coord.time_to_logical_x(event.since)
 
             if is_point:
-                x0 = time_x - half_point_width
-                x1 = time_x + half_point_width
+                # Lollipop anchor (2026-09-19 redesign): the card's left edge
+                # IS the event instant — the stem/axis-dot drawn by the
+                # painter connects the card to that exact point on the axis.
+                x0 = time_x
+                x1 = time_x + POINT_EVENT_PIXEL_WIDTH
             else:
                 x0 = coord.time_to_logical_x(event.since)
                 x1 = coord.time_to_logical_x(event.until)
