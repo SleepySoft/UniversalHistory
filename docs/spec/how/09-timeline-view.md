@@ -32,7 +32,7 @@
 
 ## 5. 交互
 
-- **拖拽平移**：左键按下记点 + ClosedHand 光标；移动时按方向取屏幕 delta，`delta_us = delta_screen / scale`，`center_time -= delta_us`（内容跟随光标，**实时提交**——旧版是松开才提交）；布局对平移不变，拖拽中只重绘不重排；松开恢复光标。
+- **拖拽平移**：左键按下记点 + ClosedHand 光标；移动时按方向取屏幕 delta，`delta_us = delta_screen / scale`，`center_time -= delta_us`（内容跟随光标，**实时提交**——旧版是松开才提交）；布局对平移不变，拖拽中只重绘不重排（锚点坐标系纯 transform 平移，机制与 #38 复盘见 [06-geometry.md](06-geometry.md) §7）；松开恢复光标。
 - **双击**：命中 item → emit `itemDoubleClicked`。
 - **右键**：emit `contextMenuRequested(globalPos, EventIndex|None)`。
 - **滚轮**：
