@@ -50,8 +50,8 @@ ITEM_COLORS = [
     QColor(255, 245, 247),
 ]
 from universal_history.render.painter import (
-    item_in_time_range, paint_axis, paint_hover_overlay, paint_item,
-    paint_thread_background,
+    item_in_time_range, paint_axis, paint_axis_labels, paint_hover_overlay,
+    paint_item, paint_thread_background,
 )
 
 
@@ -499,10 +499,13 @@ class TimelineView(QWidget):
         qp.setRenderHint(QPainter.RenderHint.Antialiasing)
         qp.fillRect(self.rect(), self.bg_color)
 
-        # 1. Axis geometry + labels.
+        # 1. Axis geometry (+ labels in horizontal mode). Vertical mode
+        # defers labels until after the threads: they sit on the same side
+        # as the left threads and would be occluded (user report 2026-09-19).
         qp.setTransform(self.coord.transform())
         paint_axis(
-            qp, self.coord, self.axis_color, self.tick_color, self.text_color, self.tick_font
+            qp, self.coord, self.axis_color, self.tick_color, self.text_color,
+            self.tick_font, with_labels=not self.coord.is_vertical,
         )
 
         # 2. Thread backgrounds and items (paint only what is visible —
@@ -523,6 +526,14 @@ class TimelineView(QWidget):
                     self.item_text_color,
                     self.item_font,
                 )
+
+        # 2b. Vertical mode: axis labels go ON TOP of the threads, backed by
+        # a subtle chip so they stay readable over the left-side bands.
+        if self.coord.is_vertical:
+            paint_axis_labels(
+                qp, self.coord, self.text_color, self.tick_font,
+                with_background=True,
+            )
 
         # 3. Self-drawn hover overlay (legacy real-time tips): crosshair +
         # floating info box, in screen coordinates, on top of everything.

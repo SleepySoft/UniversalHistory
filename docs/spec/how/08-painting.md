@@ -23,7 +23,8 @@
 - **轴带（2026-09-19 重设计）**：先填 `AXIS_STRIP_FILL` 轴带背景（横向 ±30px），再画基线——轴区读作独立的尺子，不再是光秃秃一根线；
 - 基线在逻辑 y=0 横贯当前视口（按 `center_logical_x()` 定位）；
 - **刻度只向 +y 单侧悬挂**（major 9px / minor 4px / demoted 7px），不再 ±6px 上下穿——旧设计上行刻度与标签互相叠压（用户报告）；纵向模式由旋转自动转置为「向左」；
-- **标签在屏幕坐标绘制**：先 `resetTransform()` 保证文字不旋转；标签位于刻度尖端下方（`LABEL_TOP=14`），水平模式 `AlignHCenter|AlignTop` 居中于刻度，垂直模式在轴左侧右对齐、垂直居中于刻度（与旧版纵向标签方位一致）；
+- **标签在屏幕坐标绘制**（`paint_axis_labels`）：先 `resetTransform()` 保证文字不旋转；标签位于刻度尖端下方（`LABEL_TOP=14`），水平模式 `AlignHCenter|AlignTop` 居中于刻度，垂直模式在轴左侧右对齐、垂直居中于刻度（与旧版纵向标签方位一致）；
+- **纵向模式标签延后绘制（2026-09-19）**：标签与左侧 Thread 同侧，会被事件卡遮挡——`paintEvent` 在纵向模式先 `paint_axis(with_labels=False)`，Thread 画完后再 `paint_axis_labels(with_background=True)` 置顶，标签带 `AXIS_STRIP_FILL` 底衬 chip 保持可读；
 - 标签绘制段用 `qp.save()`/`qp.restore()` 包裹，`resetTransform()` 不泄漏——函数进出 transform 状态一致（旧文档记的「不恢复」隐式契约已随 save/restore 消除）。
 
 ## 4. 事件绘制（paint_item）

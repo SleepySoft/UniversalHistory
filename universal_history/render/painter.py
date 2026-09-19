@@ -205,6 +205,7 @@ def paint_axis(
     tick_color: QColor,
     text_color: QColor,
     font: QFont,
+    with_labels: bool = True,
 ) -> None:
     """Paint the central axis strip: band background, baseline, ticks, labels.
 
@@ -217,6 +218,9 @@ def paint_axis(
     labels sit below them. In vertical mode the rotation maps +y to the
     screen-left, so labels end up left of the axis — same side as the legacy
     vertical layout.
+
+    ``with_labels=False`` skips the label pass (vertical mode defers labels
+    to `paint_axis_labels` after the threads so they are not occluded).
     """
     vp = coord.viewport()
     half_len = vp.length / 2
@@ -260,9 +264,33 @@ def paint_axis(
             x = coord.time_to_logical_x(tick)
             qp.drawLine(QPointF(x, 0), QPointF(x, length))
 
-    # 3. Labels in screen coordinates so they stay upright; only major and
-    # demoted (watermark) layers get labels. Labels sit below the tick tips
-    # (left of the axis in vertical mode), clear of the baseline.
+    if with_labels:
+        paint_axis_labels(qp, coord, text_color, font)
+
+
+def paint_axis_labels(
+    qp: QPainter,
+    coord: CoordinateSystem,
+    text_color: QColor,
+    font: QFont,
+    with_background: bool = False,
+) -> None:
+    """Draw the tick labels in screen coordinates (never rotated).
+
+    Only major and demoted (watermark) layers get labels. Labels sit below
+    the tick tips (left of the axis in vertical mode), clear of the baseline.
+
+    ``with_background=True`` draws a subtle chip behind each label — used in
+    vertical mode, where labels are painted on top of the threads (they sit
+    on the same side as the left threads and would otherwise be occluded).
+    """
+    layers = _tick_layers(coord)
+
+    def _faded(color: QColor, alpha: float) -> QColor:
+        c = QColor(color)
+        c.setAlphaF(max(0.0, min(1.0, alpha)))
+        return c
+
     qp.save()
     qp.resetTransform()
     qp.setFont(font)
@@ -272,7 +300,6 @@ def paint_axis(
         if role == "minor":
             continue
         label_alpha = alpha if role == "major" else 0.3
-        qp.setPen(_faded(text_color, label_alpha))
         for tick in ticks:
             x = coord.time_to_logical_x(tick)
             text = _format_tick_label(tick, level)
@@ -283,13 +310,30 @@ def paint_axis(
                 # the tick zone, vertically centred on the tick.
                 rect = QRectF(0, screen_pos.y() - fm.height() / 2,
                               screen_pos.x() - 4, fm.height())
-                qp.drawText(rect, Qt.AlignmentFlag.AlignRight
-                            | Qt.AlignmentFlag.AlignVCenter, text)
+                align = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
             else:
                 rect = QRectF(screen_pos.x() - 200, screen_pos.y(),
                               400, fm.height())
-                qp.drawText(rect, Qt.AlignmentFlag.AlignHCenter
-                            | Qt.AlignmentFlag.AlignTop, text)
+                align = Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop
+
+            if with_background:
+                # Opaque-ish chip so the label stays readable over threads.
+                text_w = fm.horizontalAdvance(text)
+                chip = rect.normalized()
+                if align & Qt.AlignmentFlag.AlignRight:
+                    chip.setLeft(chip.right() - text_w)
+                else:
+                    chip.setLeft(rect.center().x() - text_w / 2)
+                    chip.setRight(rect.center().x() + text_w / 2)
+                chip.adjust(-3, -1, 3, 1)
+                bg = QColor(AXIS_STRIP_FILL)
+                bg.setAlpha(235)
+                qp.setPen(Qt.PenStyle.NoPen)
+                qp.setBrush(bg)
+                qp.drawRoundedRect(chip, 2.0, 2.0)
+
+            qp.setPen(_faded(text_color, label_alpha))
+            qp.drawText(rect, align, text)
 
     # Restore the logical transform explicitly (no implicit contract).
     qp.restore()

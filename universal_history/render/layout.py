@@ -129,8 +129,16 @@ class ThreadLayout:
         track_height = thread_width / track_count
 
         self.tracks = []
+        # Track 0 is always the axis-adjacent lane: for negative-side ranges
+        # the axis is at the y1 (high) edge, for positive ranges at y0.
+        # Without this, above-axis threads filled from the far edge and
+        # stacked inconsistently with vertical mode (user report 2026-09-19).
+        axis_at_high_edge = self.y1 <= 0
         for i in range(track_count):
-            base = self.y0 + i * track_height
+            if axis_at_high_edge:
+                base = self.y1 - (i + 1) * track_height
+            else:
+                base = self.y0 + i * track_height
             self.tracks.append(Track(i, base, base + track_height))
 
         # Sort by duration (longer first) for stable layout.
