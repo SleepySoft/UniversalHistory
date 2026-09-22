@@ -124,3 +124,62 @@ class TestServiceFilePanel(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["event_count"], 1)
         self.assertEqual(len(self.workspace.events()), 1)
+
+    def test_save_and_conflict_overwrite_his_source(self):
+        path = self.root / "loaded.his"
+        path.write_text(
+            '[START]: event\n\n'
+            'uuid: c9a7d9d4-1d05-48de-a6ba-e74e693b1f0b\n'
+            'time: 2021\n\n'
+            'title:"""\nLoaded HIS\n"""\n\n'
+            'event:"""\nPanel loaded this record.\n"""\n',
+            encoding="utf-8",
+        )
+        catalog = self.client.get("/api/files").json()
+        item = next(item for item in catalog["files"] if item["name"] == "loaded.his")
+        self.client.post("/api/files/load", json={"file_id": item["id"]})
+        event = self.workspace.events()[0]
+        event.labels["title"] = ["Changed by web"]
+        response = self.client.post("/api/events", json=event_to_dict(event))
+        self.assertEqual(response.status_code, 201)
+
+        response = self.client.post(
+            f"/api/sources/{event.source}/save", json={"force": False}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Changed by web", path.read_text(encoding="utf-8"))
+
+        path.write_text("external change", encoding="utf-8")
+        response = self.client.post(
+            f"/api/sources/{event.source}/save", json={"force": False}
+        )
+        self.assertEqual(response.status_code, 409)
+        response = self.client.post(
+            f"/api/sources/{event.source}/save", json={"force": True}
+        )
+        self.assertEqual(response.status_code, 200)
+
+    def test_source_save_and_conflict_overwrite(self):
+        catalog = self.client.get("/api/files").json()
+        file_id = catalog["files"][0]["id"]
+        self.client.post("/api/files/load", json={"file_id": file_id})
+        event = self.workspace.events("panel")[0]
+        event.labels["title"] = ["Changed by web"]
+        response = self.client.post("/api/events", json=event_to_dict(event))
+        self.assertEqual(response.status_code, 201)
+
+        response = self.client.post(
+            "/api/sources/panel/save", json={"force": False}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Changed by web", (self.root / "loaded.uh.json").read_text(encoding="utf-8"))
+
+        (self.root / "loaded.uh.json").write_text("external change", encoding="utf-8")
+        response = self.client.post(
+            "/api/sources/panel/save", json={"force": False}
+        )
+        self.assertEqual(response.status_code, 409)
+        response = self.client.post(
+            "/api/sources/panel/save", json={"force": True}
+        )
+        self.assertEqual(response.status_code, 200)

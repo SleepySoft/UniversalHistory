@@ -5,783 +5,1297 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>UniversalHistory</title>
 <style>
-  :root {
-    --bg: #fff5f7;            /* native timeline background */
-    --axis: #787878;
-    --tick: #646464;
-    --text: #323232;
-    --panel: #ffffff;
-    --accent: #4f7cff;
-  }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; overflow: hidden;
-               font: 14px "Segoe UI", "Microsoft YaHei", sans-serif;
-               background: var(--bg); color: var(--text); }
-  #app { display: flex; height: 100%; }
-  #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-  #toolbar { display: flex; gap: 8px; align-items: center; padding: 6px 10px;
-             background: var(--panel); border-bottom: 1px solid #eee; }
-  #toolbar button { padding: 4px 12px; border: 1px solid #ddd;
-                    background: #fff; border-radius: 4px; cursor: pointer; }
-  #toolbar button:hover { border-color: var(--accent); color: var(--accent); }
-  #status { margin-left: auto; font-size: 12px; color: #999; }
-  #canvas { flex: 1; cursor: grab; display: block; }
-  #canvas.dragging { cursor: grabbing; }
-  #panel { width: 360px; background: var(--panel); border-left: 1px solid #eee;
-           padding: 14px; overflow-y: auto; display: none; }
-  #panel.open { display: block; }
-  #panel h3 { margin: 0 0 4px; }
-  #panel .meta { color: #888; font-size: 12px; margin-bottom: 10px;
-                 word-break: break-all; }
-  #panel textarea, #panel input { width: 100%; margin: 4px 0 10px;
-      padding: 6px; border: 1px solid #ddd; border-radius: 4px;
-      font: inherit; }
-  #panel label { font-size: 12px; color: #666; }
-  #panel .row { display: flex; gap: 8px; }
-  #panel .row > div { flex: 1; }
-  #panel .actions { display: flex; gap: 8px; margin-top: 8px; }
-  .btn-primary { background: var(--accent); color: #fff; border: none;
-                 padding: 6px 14px; border-radius: 4px; cursor: pointer; }
-  .btn-danger { background: #b91c1c; color: #fff; border: none;
-                padding: 6px 14px; border-radius: 4px; cursor: pointer; }
-  .btn-plain { background: #f3f4f6; border: 1px solid #ddd;
-               padding: 6px 14px; border-radius: 4px; cursor: pointer; }
-  #tooltip { position: fixed; pointer-events: none; background: rgba(30,30,30,.92);
-             color: #fff; padding: 6px 9px; border-radius: 4px; font-size: 12px;
-             white-space: pre-line; display: none; z-index: 10; max-width: 320px; }
-  #err { color: #b91c1c; font-size: 12px; min-height: 16px; }
-  .dialog-overlay { position: fixed; inset: 0; display: none;
-                    align-items: center; justify-content: center;
-                    background: rgba(20,20,25,.45); z-index: 20; }
-  .dialog-overlay.open { display: flex; }
-  .dialog { width: min(680px, calc(100vw - 32px));
-            max-height: min(640px, calc(100vh - 32px));
-            display: flex; flex-direction: column; background: var(--panel);
-            border-radius: 8px; box-shadow: 0 18px 48px rgba(0,0,0,.24); }
-  .dialog-header { display: flex; align-items: center; justify-content: space-between;
-                   padding: 14px 16px 8px; }
-  .dialog-header h3 { margin: 0; }
-  .dialog-hint { margin: 0 16px 12px; color: #666; font-size: 12px; }
-  .dialog-error { margin: 0 16px 10px; color: #b91c1c; font-size: 12px;
-                  min-height: 16px; }
-  .dialog-body { margin: 0 12px 12px; overflow-y: auto; padding: 0 4px; }
-  .file-item { display: flex; align-items: center; gap: 12px;
-               padding: 10px 8px; border-bottom: 1px solid #f0f0f2; }
-  .file-item:last-child { border-bottom: 0; }
-  .file-details { min-width: 0; flex: 1; }
-  .file-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis;
-               white-space: nowrap; }
-  .file-path { color: #777; font-size: 12px; overflow: hidden;
-               text-overflow: ellipsis; white-space: nowrap; }
-  .file-meta { color: #8b8b92; font-size: 11px; margin-top: 3px; }
-  .loaded-badge { background: #eaf7ef; color: #18794e; border-radius: 999px;
-                  font-size: 11px; padding: 2px 8px; }
-  .dialog-empty { color: #777; padding: 22px 8px; text-align: center; }
-  .file-load-button { min-width: 82px; }
+  :root { --bg:#fff5f7; --panel:#fff; --line:#e4e7ec; --text:#27272a; --muted:#71717a; --accent:#4f7cff; }
+  * { box-sizing:border-box; }
+  html,body { height:100%; margin:0; overflow:hidden; background:var(--bg); color:var(--text);
+    font:14px "Segoe UI","Microsoft YaHei",sans-serif; }
+  button,select,input,textarea { font:inherit; color:inherit; }
+  button { cursor:pointer; }
+  #app { display:flex; flex-direction:column; height:100%; }
+  #workspace { flex:1; display:flex; min-height:0; }
+  #canvas-wrap { flex:1; position:relative; min-width:0; }
+  #canvas { width:100%; height:100%; display:block; cursor:grab; }
+  #canvas.dragging { cursor:grabbing; }
+  #status { position:absolute; right:12px; bottom:10px; z-index:3; padding:4px 10px;
+    border:1px solid var(--line); border-radius:999px; background:rgba(255,255,255,.92);
+    color:var(--muted); font-size:12px; }
+  #menubar { display:flex; align-items:center; gap:2px; height:34px; padding:0 8px;
+    background:#f9fafb; border-bottom:1px solid var(--line); }
+  .menu { position:relative; }
+  .menu>button { border:0; background:transparent; padding:6px 10px; border-radius:4px; }
+  .menu>button:hover,.menu.open>button { background:#eef2ff; color:var(--accent); }
+  .menu-list { display:none; position:absolute; top:100%; left:0; z-index:40; min-width:220px;
+    padding:5px; background:var(--panel); border:1px solid var(--line); border-radius:6px;
+    box-shadow:0 10px 30px rgba(0,0,0,.14); }
+  .menu.open .menu-list { display:block; }
+  .menu-item { display:flex; width:100%; justify-content:space-between; gap:20px; border:0;
+    background:transparent; text-align:left; padding:7px 9px; border-radius:4px; }
+  .menu-item:hover { background:#eef2ff; color:var(--accent); }
+  .menu-item kbd { color:var(--muted); font:11px/1.3 "Segoe UI",sans-serif; }
+  .menu-sep { height:1px; margin:4px 2px; background:var(--line); }
+  #toolbar { display:flex; gap:6px; align-items:center; padding:7px 9px; background:var(--panel);
+    border-bottom:1px solid var(--line); }
+  #toolbar button { padding:5px 10px; border:1px solid var(--line); background:#fff; border-radius:5px; }
+  #toolbar button:hover { border-color:var(--accent); color:var(--accent); }
+  .spacer { flex:1; }
+  #editor { width:420px; display:none; flex-direction:column; min-height:0; background:var(--panel);
+    border-left:1px solid var(--line); }
+  #editor.open { display:flex; }
+  .editor-head { padding:12px 14px 8px; border-bottom:1px solid var(--line); }
+  .editor-head h2 { margin:0 0 8px; font-size:17px; }
+  .source-row,.record-row { display:flex; gap:7px; align-items:center; }
+  .record-row { margin-top:7px; }
+  .source-row select,.record-row select { flex:1; min-width:0; }
+  #editor-tabs { display:flex; border-bottom:1px solid var(--line); }
+  #editor-tabs button { flex:1; padding:9px; border:0; border-bottom:2px solid transparent; background:#fafafa; }
+  #editor-tabs button.active { background:#fff; color:var(--accent); border-bottom-color:var(--accent); }
+  .editor-page { display:none; flex:1; overflow:auto; padding:13px; }
+  .editor-page.active { display:block; }
+  .field { margin-bottom:11px; }
+  .field label { display:block; margin-bottom:4px; color:var(--muted); font-size:12px; }
+  .field input,.field textarea,.field select { width:100%; padding:7px 8px; border:1px solid var(--line); border-radius:5px; }
+  .field textarea { min-height:78px; resize:vertical; }
+  .field-row { display:flex; gap:8px; align-items:center; }
+  .field-row input[type=text] { flex:1; }
+  .field-row label { display:flex; gap:4px; align-items:center; margin:0; }
+  .radio-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:3px; }
+  .radio-grid label { display:flex; align-items:center; gap:3px; font-size:12px; }
+  .actions { display:flex; gap:8px; padding:11px 14px; border-top:1px solid var(--line); }
+  .btn { padding:6px 11px; border:1px solid var(--line); background:#fff; border-radius:5px; }
+  .btn-primary { border-color:var(--accent); background:var(--accent); color:#fff; }
+  .btn-danger { border-color:#b91c1c; background:#b91c1c; color:#fff; }
+  #editor-error { min-height:17px; padding:0 14px 8px; color:#b91c1c; font-size:12px; }
+  .detail-label { margin:11px 0 3px; color:var(--muted); font-size:12px; font-weight:600; }
+  .detail-value { white-space:pre-wrap; word-break:break-word; }
+  .dialog-overlay { position:fixed; inset:0; z-index:50; display:none; align-items:center;
+    justify-content:center; background:rgba(20,20,25,.45); }
+  .dialog-overlay.open { display:flex; }
+  .dialog { width:min(720px,calc(100vw - 32px)); max-height:min(680px,calc(100vh - 32px));
+    display:flex; flex-direction:column; background:var(--panel); border-radius:8px;
+    box-shadow:0 18px 50px rgba(0,0,0,.22); }
+  .dialog-header { display:flex; align-items:center; justify-content:space-between; padding:14px 16px 6px; }
+  .dialog-header h3 { margin:0; }
+  .dialog-hint { margin:0 16px 10px; color:var(--muted); font-size:12px; }
+  .dialog-error { min-height:16px; margin:0 16px 8px; color:#b91c1c; font-size:12px; }
+  .dialog-body { margin:0 12px 12px; padding:0 5px; overflow:auto; }
+  .dialog-footer { display:flex; justify-content:flex-end; gap:8px; padding:0 16px 14px; }
+  .file-item,.thread-item,.row { display:flex; gap:10px; align-items:center; padding:9px 8px;
+    border-bottom:1px solid #f0f0f2; }
+  .file-item:last-child { border-bottom:0; }
+  .file-details,.thread-details { flex:1; min-width:0; }
+  .file-name { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .file-path,.thread-sub { color:var(--muted); font-size:12px; overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap; }
+  .file-meta { margin-top:3px; color:#8b8b92; font-size:11px; }
+  .loaded-badge { padding:2px 8px; border-radius:999px; background:#eaf7ef; color:#18794e; font-size:11px; }
+  .dialog-empty { padding:22px 8px; color:var(--muted); text-align:center; }
+  .two-col { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .list-title { margin:0 0 6px; color:var(--muted); font-size:12px; font-weight:600; }
+  .thread-item { margin-bottom:5px; border:1px solid var(--line); border-radius:5px; }
+  .thread-item.selected { border-color:var(--accent); background:#f5f8ff; }
+  .share-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:11px; }
+  .share-row input[type=range] { width:100%; }
+  .control-row { display:flex; flex-wrap:wrap; gap:7px; }
+  .label-row { display:grid; grid-template-columns:minmax(80px,150px) 1fr auto; gap:6px;
+    align-items:center; margin-bottom:6px; }
+  .label-row input { padding:6px; border:1px solid var(--line); border-radius:4px; }
+  #context-menu { display:none; position:fixed; z-index:70; min-width:190px; padding:4px;
+    background:var(--panel); border:1px solid var(--line); border-radius:6px;
+    box-shadow:0 12px 30px rgba(0,0,0,.18); }
+  #context-menu button { display:block; width:100%; padding:7px 10px; border:0;
+    background:transparent; text-align:left; border-radius:4px; }
+  #context-menu button:hover { background:#eef2ff; color:var(--accent); }
+  #context-menu hr { margin:4px 2px; border:0; border-top:1px solid var(--line); }
+  #tooltip { position:fixed; z-index:20; display:none; max-width:340px; padding:6px 9px;
+    background:rgba(30,30,30,.93); color:#fff; border-radius:5px; font-size:12px;
+    white-space:pre-line; pointer-events:none; }
 </style>
 </head>
 <body>
 <div id="app">
-  <div id="main">
-    <div id="toolbar">
-      <button id="btn-fit">Fit to View</button>
-      <button id="btn-reload">Reload</button>
-      <button id="btn-files">Files…</button>
-      <span id="status">connecting…</span>
+  <nav id="menubar">
+    <div class="menu"><button data-menu-button>File</button><div class="menu-list">
+      <button class="menu-item" data-action="files">Open server files…<kbd>Ctrl+O</kbd></button>
+      <button class="menu-item" data-action="editor">Event Editor<kbd>Ctrl+E</kbd></button>
+      <div class="menu-sep"></div>
+      <button class="menu-item" data-action="save">Save active source</button>
+      <button class="menu-item" data-action="reload">Reload from workspace</button>
+    </div></div>
+    <div class="menu"><button data-menu-button>View</button><div class="menu-list">
+      <button class="menu-item" data-action="filter">Filter…<kbd>Ctrl+L</kbd></button>
+      <button class="menu-item" data-action="threads">Thread Manager…<kbd>Ctrl+M</kbd></button>
+      <div class="menu-sep"></div>
+      <button class="menu-item" data-action="fit">Fit to View<kbd>Ctrl+0</kbd></button>
+      <button class="menu-item" data-action="orientation">Toggle Orientation<kbd>Ctrl+T</kbd></button>
+    </div></div>
+    <div class="menu"><button data-menu-button>Help</button><div class="menu-list">
+      <button class="menu-item" data-action="help">Help Contents</button>
+      <button class="menu-item" data-action="about">About UniversalHistory</button>
+    </div></div>
+    <span class="spacer" style="text-align:right;font-size:12px;color:var(--muted)">timeline-centric workspace</span>
+  </nav>
+  <div id="workspace">
+    <div id="canvas-wrap">
+      <canvas id="canvas"></canvas>
+      <div id="status">connecting…</div>
     </div>
-    <canvas id="canvas"></canvas>
-  </div>
-  <div id="panel">
-    <h3 id="p-title">Event Details</h3>
-    <div class="meta" id="p-meta"></div>
-    <div id="p-view"></div>
-    <div id="p-edit" style="display:none">
-      <label>Title</label><input id="e-title">
-      <label>Time (e.g. "300 BC", "2020-01-01", "公元前200年" via server parse)</label>
-      <input id="e-time">
-      <label>Brief</label><textarea id="e-brief" rows="2"></textarea>
-      <label>Event</label><textarea id="e-event" rows="6"></textarea>
-      <div id="err"></div>
-    </div>
-    <div class="actions">
-      <button class="btn-primary" id="btn-edit">Edit</button>
-      <button class="btn-primary" id="btn-save" style="display:none">Save</button>
-      <button class="btn-danger" id="btn-delete">Delete</button>
-      <button class="btn-plain" id="btn-close">Close</button>
-    </div>
+    <aside id="editor">
+      <div class="editor-head">
+        <h2 id="editor-title">Event</h2>
+        <div class="source-row"><select id="ed-source" aria-label="Source"></select></div>
+        <div class="record-row">
+          <select id="ed-record" aria-label="Record"></select>
+          <button class="btn" id="ed-new">New</button>
+          <button class="btn btn-danger" id="ed-delete">Delete</button>
+        </div>
+      </div>
+      <div id="editor-tabs">
+        <button data-tab="details" class="active">Details</button>
+        <button data-tab="form">Form</button>
+        <button data-tab="labels">Label Tags</button>
+      </div>
+      <div id="page-details" class="editor-page active"></div>
+      <div id="page-form" class="editor-page">
+        <div class="field"><label>UUID</label><input id="ed-uuid" readonly></div>
+        <div class="field"><label>Time</label><div class="field-row"><input id="ed-time" type="text"><label><input id="lock-time" type="checkbox">Lock</label></div></div>
+        <div class="field"><label>Focus</label><div class="radio-grid">
+          <label><input name="ed-focus" type="radio" value="time">Time</label>
+          <label><input name="ed-focus" type="radio" value="location">Location</label>
+          <label><input name="ed-focus" type="radio" value="people">People</label>
+          <label><input name="ed-focus" type="radio" value="organization">Org</label>
+          <label><input name="ed-focus" type="radio" value="event" checked>Event</label>
+        </div></div>
+        <div class="field"><label>Location</label><div class="field-row"><input id="ed-location" type="text"><label><input id="lock-location" type="checkbox">Lock</label></div></div>
+        <div class="field"><label>People</label><div class="field-row"><input id="ed-people" type="text"><label><input id="lock-people" type="checkbox">Lock</label></div></div>
+        <div class="field"><label>Organization</label><div class="field-row"><input id="ed-organization" type="text"><label><input id="lock-organization" type="checkbox">Lock</label></div></div>
+        <div class="field"><label>Tags</label><div class="field-row"><input id="ed-tags" type="text"><label><input id="lock-tags" type="checkbox">Lock</label></div></div>
+        <div class="field"><label>Title</label><input id="ed-title" type="text"></div>
+        <div class="field"><label>Brief</label><textarea id="ed-brief"></textarea></div>
+        <div class="field"><label>Event</label><textarea id="ed-event"></textarea></div>
+      </div>
+      <div id="page-labels" class="editor-page"><div id="label-table"></div><button class="btn" id="add-label">Add Label</button></div>
+      <div id="editor-error"></div>
+      <div class="actions">
+        <button class="btn btn-primary" id="ed-apply">Apply</button>
+        <button class="btn" id="ed-edit">Edit</button>
+        <button class="btn" id="ed-cancel">Cancel</button>
+        <button class="btn" id="ed-close">Close</button>
+      </div>
+    </aside>
   </div>
 </div>
-<div id="tooltip"></div>
-<div id="file-dialog" class="dialog-overlay" role="dialog" aria-modal="true"
-     aria-labelledby="file-dialog-title">
-  <div class="dialog">
-    <div class="dialog-header">
-      <h3 id="file-dialog-title">Server Files</h3>
-      <button id="btn-files-close" class="btn-plain">Close</button>
+<div id="file-dialog" class="dialog-overlay" role="dialog" aria-modal="true">
+  <div class="dialog"><div class="dialog-header"><h3>Server Files</h3><button class="btn" data-close="file-dialog">×</button></div>
+    <p class="dialog-hint">Only files exposed by the server are shown.</p>
+    <div class="dialog-error" id="file-error"></div><div class="dialog-body" id="file-list"></div></div>
+</div>
+<div id="thread-dialog" class="dialog-overlay" role="dialog" aria-modal="true">
+  <div class="dialog" style="width:min(900px,calc(100vw - 32px))">
+    <div class="dialog-header"><h3>Thread Manager</h3><button class="btn" data-close="thread-dialog">×</button></div>
+    <div class="dialog-error" id="thread-error"></div>
+    <div class="dialog-body">
+      <div class="share-row">
+        <div><label class="list-title">Axis Offset</label><input id="axis-offset" type="range" min="0" max="100" step="1"></div>
+        <div><label class="list-title">Add loaded source</label><div class="control-row"><select id="thread-add-source" style="flex:1"></select><button class="btn" id="thread-add-left">Add Left</button><button class="btn" id="thread-add-right">Add Right</button></div></div>
+      </div>
+      <div class="two-col"><div><p class="list-title">Left Threads</p><div id="left-threads"></div></div><div><p class="list-title">Right Threads</p><div id="right-threads"></div></div></div>
+      <div class="field" style="margin-top:14px"><label>Thread Share (0.01–0.99)</label><input id="thread-share" type="number" min="0.01" max="0.99" step="0.05"></div>
+      <div class="control-row"><button class="btn" id="thread-up">Move Up</button><button class="btn" id="thread-down">Move Down</button><button class="btn" id="thread-switch">Switch Side</button><button class="btn btn-danger" id="thread-remove">Remove</button></div>
     </div>
-    <p class="dialog-hint">
-      Only files made available by the server are listed.
-    </p>
-    <div id="file-dialog-error" class="dialog-error"></div>
-    <div id="file-list" class="dialog-body"></div>
+    <div class="dialog-footer"><button class="btn btn-primary" data-close="thread-dialog">Close</button></div>
   </div>
 </div>
+<div id="filter-dialog" class="dialog-overlay" role="dialog" aria-modal="true">
+  <div class="dialog"><div class="dialog-header"><h3>Filter Events</h3><button class="btn" data-close="filter-dialog">×</button></div>
+    <div class="dialog-body">
+      <div class="two-col">
+        <div class="field"><label>Source (empty = all)</label><select id="filter-source"></select></div>
+        <div class="field"><label>Focus Label</label><input id="filter-focus" list="focus-list" placeholder="event"><datalist id="focus-list"><option value=""></option><option>time</option><option>location</option><option>people</option><option>organization</option><option>event</option></datalist></div>
+      </div>
+      <div class="field"><label>Include Labels (label: tags; label2: tags)</label><input id="filter-include" placeholder="tags: tag1; author: Sleepy"></div>
+      <div class="field"><label>Exclude Labels (label: tags; label2: tags)</label><input id="filter-exclude" placeholder="tags: draft"></div>
+      <div class="two-col"><div class="field"><label>Time From</label><input id="filter-from" placeholder="e.g. 2000"></div><div class="field"><label>Time To</label><input id="filter-to" placeholder="e.g. 2020"></div></div>
+    </div>
+    <div class="dialog-error" id="filter-error"></div>
+    <div class="dialog-footer"><button class="btn" data-close="filter-dialog">Cancel</button><button class="btn btn-primary" id="filter-apply">Apply</button></div>
+  </div>
+</div>
+<div id="quick-dialog" class="dialog-overlay" role="dialog" aria-modal="true">
+  <div class="dialog" style="width:min(520px,calc(100vw - 32px))"><div class="dialog-header"><h3>Quick Entry</h3><button class="btn" data-close="quick-dialog">×</button></div>
+    <p class="dialog-hint" id="quick-target"></p><div class="dialog-error" id="quick-error"></div>
+    <div class="dialog-body"><div class="field"><label>Title</label><input id="quick-title"></div><div class="field"><label>Natural-language time</label><input id="quick-time"></div></div>
+    <div class="dialog-footer"><button class="btn" data-close="quick-dialog">Cancel</button><button class="btn btn-primary" id="quick-apply">Create</button></div></div>
+</div>
+<div id="text-dialog" class="dialog-overlay" role="dialog" aria-modal="true">
+  <div class="dialog" style="width:min(680px,calc(100vw - 32px))"><div class="dialog-header"><h3 id="text-title"></h3><button class="btn" data-close="text-dialog">×</button></div>
+    <div class="dialog-body" id="text-body" style="white-space:pre-wrap"></div><div class="dialog-footer"><button class="btn btn-primary" data-close="text-dialog">Close</button></div></div>
+</div>
+<div id="context-menu"></div><div id="tooltip"></div>
 <script>
 "use strict";
-/* ====================================================================
-   UniversalHistory web frontend — mirrors the native PyQt6 timeline:
-   central axis, left/right colored threads, point chips & period bars,
-   LOD tick layers (minor fade-in / major / demoted), drag pan, wheel pan,
-   Ctrl+wheel anchored zoom, hover tooltip, click = details, dblclick item
-   = edit, dblclick empty band = quick create. Live sync via WebSocket.
-   ==================================================================== */
 
 const US_PER_DAY = 86400e6;
-
-/* ---------- proleptic Gregorian <-> Julian Day (matches JDNTimestamp) --- */
 function jdToGregorian(jd) {
-  const z = Math.floor(jd + 0.5);
-  const f = jd + 0.5 - z;
+  const z = Math.floor(jd + 0.5), f = jd + 0.5 - z;
   const alpha = Math.floor((z - 1867216.25) / 36524.25);
   const a = z + 1 + alpha - Math.floor(alpha / 4);
-  const b = a + 1524;
-  const c = Math.floor((b - 122.1) / 365.25);
-  const d = Math.floor(365.25 * c);
-  const e = Math.floor((b - d) / 30.6001);
+  const b = a + 1524, c = Math.floor((b - 122.1) / 365.25);
+  const d = Math.floor(365.25 * c), e = Math.floor((b - d) / 30.6001);
   const dayFloat = b - d - Math.floor(30.6001 * e) + f;
   const month = e < 14 ? e - 1 : e - 13;
   const year = month > 2 ? c - 4716 : c - 4715;
-  const day = Math.floor(dayFloat);
-  const frac = dayFloat - day;
+  const day = Math.floor(dayFloat), frac = dayFloat - day;
   const secs = Math.floor(frac * 86400 + 1e-6);
-  return { year, month, day,
-           hour: Math.floor(secs / 3600),
-           minute: Math.floor(secs / 60) % 60,
-           second: secs % 60 };
+  return { year, month, day, hour: Math.floor(secs / 3600),
+    minute: Math.floor((secs % 3600) / 60), second: secs % 60 };
 }
 function gregorianToJd(y, m, d) {
-  const a = Math.floor((14 - m) / 12);
-  const y2 = y + 4800 - a;
-  const m2 = m + 12 * a - 3;
-  return d + Math.floor((153 * m2 + 2) / 5) + 365 * y2 +
-         Math.floor(y2 / 4) - Math.floor(y2 / 100) +
-         Math.floor(y2 / 400) - 32045 - 0.5;
+  const a = Math.floor((14 - m) / 12), y2 = y + 4800 - a, m2 = m + 12 * a - 3;
+  return d + Math.floor((153 * m2 + 2) / 5) + 365 * y2 + Math.floor(y2 / 4) -
+    Math.floor(y2 / 100) + Math.floor(y2 / 400) - 32045;
 }
-function usToJd(us) { return us / US_PER_DAY; }
-function jdToUs(jd) { return Math.round(jd * US_PER_DAY); }
+const usToJd = us => us / US_PER_DAY;
+const jdToUs = jd => Math.round(jd * US_PER_DAY);
 
-/* ---------- tick levels (mirrors chrono/tick_stepper.py) ---------------- */
 const DAY = 1, WEEK = 7, MONTH = 30, QUARTER = 90, YEAR = 365.2425;
 const LEVELS = [
-  { id: "hour_6", days: 0.25, kind: "hour", step: 6, min: -10000, max: 10000 },
-  { id: "day_1", days: DAY, kind: "day", min: -10000, max: 10000 },
-  { id: "week_1", days: WEEK, kind: "week", min: -10000, max: 10000 },
-  { id: "month_1", days: MONTH, kind: "month", step: 1, min: -10000, max: 10000 },
-  { id: "month_3", days: QUARTER, kind: "month", step: 3, min: -10000, max: 10000 },
+  { name: "minute", days: 1 / 1440, step: 1 }, { name: "10min", days: 10 / 1440, step: 10 },
+  { name: "hour", days: 1 / 24, step: 1 }, { name: "6hour", days: 6 / 24, step: 6 },
+  { name: "day", days: DAY, step: 1 }, { name: "week", days: WEEK, step: 1 },
+  { name: "month", days: MONTH, step: 1 }, { name: "quarter", days: QUARTER, step: 3 },
+  { name: "year", days: YEAR, step: 1 }, { name: "2year", days: 2 * YEAR, step: 2 },
+  { name: "5year", days: 5 * YEAR, step: 5 }, { name: "10year", days: 10 * YEAR, step: 10 },
+  { name: "20year", days: 20 * YEAR, step: 20 }, { name: "50year", days: 50 * YEAR, step: 50 },
+  { name: "100year", days: 100 * YEAR, step: 100 }, { name: "200year", days: 200 * YEAR, step: 200 },
+  { name: "500year", days: 500 * YEAR, step: 500 }, { name: "1000year", days: 1000 * YEAR, step: 1000 },
+  { name: "2000year", days: 2000 * YEAR, step: 2000 }, { name: "5000year", days: 5000 * YEAR, step: 5000 }
 ];
-for (const s of [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000])
-  LEVELS.push({ id: "year_" + s, days: YEAR * s, kind: "year", step: s });
-for (const mag of [1e4, 1e5, 1e6, 1e7, 1e8, 1e9])
-  for (const s of [1, 2, 5])
-    LEVELS.push({ id: "year_" + s * mag, days: YEAR * s * mag,
-                  kind: "year", step: s * mag });
-
-const FADE_MIN = 50, FADE_FULL = 100, DEMOTE = 300;  /* px, mirrors painter */
-
-/* ---------- label formatting (mirrors painter._format_tick_label) ------- */
+const FADE_MIN = 50, FADE_FULL = 100, DEMOTE = 300;
 function fmtYear(y) { return y <= 0 ? `${-(y - 1)} BC` : `${y}`; }
-function fmtBp(y) {
-  const bp = 1950 - y;
-  if (bp >= 1e9) return `${+(bp / 1e9).toPrecision(6)} Ga BP`;
-  if (bp >= 1e6) return `${+(bp / 1e6).toPrecision(6)} Ma BP`;
-  if (bp >= 1e3) return `${+(bp / 1e3).toPrecision(6)} ka BP`;
-  return `${bp} BP`;
-}
 function tickLabel(jd, level) {
   const g = jdToGregorian(jd);
-  if (g.year < -10000) return fmtBp(g.year);
-  if (level.kind === "year") return fmtYear(g.year);
-  if (level.kind === "month")
-    return g.month === 1 ? fmtYear(g.year)
-         : ["","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][g.month];
-  if (level.kind === "week" || level.kind === "day")
-    return g.day === 1 ? `${String(g.month).padStart(2,"0")}/${g.year}` : `${g.day}`;
-  if (level.kind === "hour")
-    return g.hour === 0 ? `${fmtYear(g.year)}-${String(g.month).padStart(2,"0")}-${String(g.day).padStart(2,"0")}`
-                        : `${String(g.hour).padStart(2,"0")}:00`;
-  return "";
+  if (level.name === "month") return `${g.year}-${String(g.month).padStart(2, "0")}`;
+  if (level.name === "quarter") return `${g.year}-Q${Math.floor((g.month - 1) / 3) + 1}`;
+  if (["minute", "10min", "hour", "6hour"].includes(level.name)) {
+    return `${g.year}-${String(g.month).padStart(2, "0")}-${String(g.day).padStart(2, "0")} ${String(g.hour).padStart(2, "0")}:${String(g.minute).padStart(2, "0")}`;
+  }
+  return fmtYear(g.year);
 }
-
-/* ---------- tick generation ---------------------------------------------- */
 function snapJd(jd, level) {
   const g = jdToGregorian(jd);
-  if (level.kind === "year") {
-    const yy = g.year - (g.year % level.step + level.step) % level.step;
-    return gregorianToJd(yy, 1, 1);
+  if (["minute", "10min"].includes(level.name)) {
+    const minute = g.minute - g.minute % level.step;
+    return gregorianToJd(g.year, g.month, g.day) + (g.hour * 60 + minute) / 1440 - 0.5;
   }
-  if (level.kind === "month") {
-    const m = level.step === 3 ? Math.floor((g.month - 1) / 3) * 3 + 1 : 1;
-    return gregorianToJd(g.year, level.step === 1 ? g.month : m, 1);
+  if (["hour", "6hour"].includes(level.name)) {
+    const hour = g.hour - g.hour % level.step;
+    return gregorianToJd(g.year, g.month, g.day) + hour / 24 - 0.5;
   }
-  if (level.kind === "week") {
-    const day0 = Math.floor(jd + 0.5);            /* integer JDN */
-    const dow = (day0 + 1) % 7;                   /* 0 = Monday */
-    return day0 - dow - 0.5;
+  if (["day", "week"].includes(level.name)) return Math.floor(jd + 0.5) - 0.5;
+  if (["month", "quarter"].includes(level.name)) {
+    const m = level.name === "quarter" ? Math.floor((g.month - 1) / 3) * 3 + 1 : g.month;
+    return gregorianToJd(g.year, m, 1) - 0.5;
   }
-  if (level.kind === "day") return Math.floor(jd + 0.5) - 0.5;
-  if (level.kind === "hour") {
-    const day0 = Math.floor(jd + 0.5) - 0.5;
-    const h = Math.floor((jd - day0) * 24 + 1e-9);
-    return day0 + Math.floor(h / level.step) * level.step / 24;
-  }
-  return jd;
+  const yy = g.year - (g.year % level.step + level.step) % level.step;
+  return gregorianToJd(yy, 1, 1) - 0.5;
 }
 function nextJd(jd, level) {
-  if (level.kind === "year" || level.kind === "month") {
-    const g = jdToGregorian(jd);
-    if (level.kind === "year") return gregorianToJd(g.year + level.step, 1, 1);
-    const m0 = g.month - 1 + level.step;
-    return gregorianToJd(g.year + Math.floor(m0 / 12), m0 % 12 + 1, 1);
+  if (["minute", "10min", "hour", "6hour", "day", "week"].includes(level.name)) return jd + level.days;
+  const g = jdToGregorian(jd + 0.1);
+  if (level.name === "month") {
+    let m = g.month + 1, y = g.year;
+    if (m > 12) { m = 1; y++; }
+    return gregorianToJd(y, m, 1) - 0.5;
   }
-  if (level.kind === "hour") return jd + level.step / 24;
-  return jd + level.days;
+  if (level.name === "quarter") {
+    let m = g.month + 3, y = g.year;
+    if (m > 12) { m -= 12; y++; }
+    return gregorianToJd(y, m, 1) - 0.5;
+  }
+  return gregorianToJd(g.year + level.step, 1, 1) - 0.5;
 }
-function tickLayers(centerJd, pxPerDay, width) {
+function tickLayers(centerJd, pxPerDay, length) {
   const out = [];
   for (const level of LEVELS) {
     const px = level.days * pxPerDay;
     if (px < FADE_MIN) continue;
     const alpha = px >= FADE_FULL ? 1 : (px - FADE_MIN) / (FADE_FULL - FADE_MIN);
     const role = px < FADE_FULL ? "minor" : px > DEMOTE ? "demoted" : "major";
-    const start = centerJd - width / 2 / pxPerDay, end = centerJd + width / 2 / pxPerDay;
-    const ticks = [];
-    let t = snapJd(start, level), guard = 0;
-    while (t < end && guard++ < 300) {
-      if (t >= start) ticks.push(t);
-      t = nextJd(t, level);
-    }
+    const start = centerJd - length / 2 / pxPerDay, end = centerJd + length / 2 / pxPerDay;
+    const ticks = []; let t = snapJd(start, level), guard = 0;
+    while (t < end && guard++ < 300) { if (t >= start) ticks.push(t); t = nextJd(t, level); }
     out.push({ level, ticks, alpha, role });
     if (px > DEMOTE) break;
   }
   return out;
 }
 
-/* ---------- data ---------------------------------------------------------- */
-const THREAD_COLORS = [                       /* native palette approximations */
-  ["#f0f0f0", "#b9e3d9"], ["#fde8e8", "#f2b8c6"], ["#e8f0fe", "#a8c4fa"],
-  ["#fff7e0", "#f5d98b"], ["#eef7e8", "#b5dfae"], ["#f3eefe", "#cdb7f6"],
-];
-let threads = [];        /* [{source, events:[index...], colorIdx, side}] */
-let selected = null;     /* full event being shown/edited */
+const STORAGE_KEY = "universal-history.web.workspace.v2";
+const THREAD_COLORS = [["#f0f0f0", "#b9e3d9"], ["#fde8e8", "#f2b8c6"], ["#e8f0fe", "#a8c4fa"],
+  ["#fff7e0", "#f5d98b"], ["#eef7e8", "#b5dfae"], ["#f3eefe", "#cdb7f6"]];
+let viewState = { centerJd: usToJd(211813444800000000), pxPerDay: 2, orientation: "horizontal",
+  axisOffset: 50, threadMeta: {}, filterConfig: null };
+let allEvents = [];
+let threads = [];
+let workspaceSources = [];
+let filterEvents = null;
+let selected = null;
+let editorDirty = false;
+let loadingEditor = false;
+let editorTab = "details";
+let savedLockedValues = {};
+let managerSelection = null;
+let quickThread = null;
+let contextThread = null;
+try {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) viewState = Object.assign(viewState, JSON.parse(saved));
+} catch (error) { console.warn("Could not restore view state", error); }
+function persist() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(viewState)); } catch (_) {} }
+function sourceKey(source) { return source || "(empty source)"; }
+function threadMeta(source) {
+  if (!viewState.threadMeta[sourceKey(source)]) {
+    const count = Object.keys(viewState.threadMeta).length;
+    viewState.threadMeta[sourceKey(source)] = { side: count % 2 === 0 ? "right" : "left",
+      share: 0.5, colorIdx: count % THREAD_COLORS.length, order: count };
+  }
+  return viewState.threadMeta[sourceKey(source)];
+}
 
-async function api(path, opts) {
-  const r = await fetch(path, opts);
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
-  return r.status === 204 ? null : r.json();
+async function api(path, options = {}) {
+  const response = await fetch(path, options);
+  if (!response.ok) {
+    let detail = await response.text();
+    try { detail = JSON.parse(detail).detail || detail; } catch (_) {}
+    const error = new Error(detail || `${response.status} ${response.statusText}`);
+    error.status = response.status;
+    throw error;
+  }
+  return response.status === 204 ? null : response.json();
+}
+async function saveSource(source, force = false) {
+  if (!source || source === "__filter__") return;
+  try {
+    await api(`/api/sources/${encodeURIComponent(source)}/save`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ force })
+    });
+    setStatus(`Saved ${sourceDisplay(source)}`);
+  } catch (error) {
+    if (error.status === 409 && confirm(`The file changed on disk since it was loaded.\nOverwrite ${sourceDisplay(source)} anyway?`)) {
+      return saveSource(source, true);
+    }
+    alert(`Save Failed\n${error.message}`);
+  }
 }
 async function reload() {
-  const sources = await api("/api/sources");
-  const all = await api("/api/events");
-  threads = sources.map((s, i) => ({
-    source: s.source,
-    events: all.filter(e => e.source === s.source),
-    colorIdx: i % THREAD_COLORS.length,
-    side: i % 2 === 0 ? "right" : "left",
-  }));
-  layout();
-  draw();
-  setStatus(`${sources.length} sources, ${all.length} events`);
+  const [sources, events] = await Promise.all([api("/api/sources"), api("/api/events")]);
+  allEvents = events;
+  workspaceSources = sources.map(item => item.source);
+  threads = sources.map(item => {
+    const meta = threadMeta(item.source);
+    return { source: item.source, eventCount: item.event_count,
+      events: events.filter(e => e.source === item.source), side: meta.side, share: meta.share,
+      colorIdx: meta.colorIdx, order: meta.order, custom: false };
+  }).filter(t => viewState.threadMeta[sourceKey(t.source)].visible !== false);
+  if (filterEvents) {
+    const meta = threadMeta("__filter__");
+    threads.push({ source: "__filter__", eventCount: filterEvents.length, events: filterEvents,
+      side: meta.side || "left", share: meta.share, colorIdx: meta.colorIdx, order: meta.order,
+      custom: true, fixedColors: ["#dce6f0", "#c8d2f0"] });
+  }
+  threads.sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || sourceKey(a.source).localeCompare(sourceKey(b.source)));
+  layout(); draw(); refreshEditor(); renderThreadManager();
+  setStatus(`${sources.length} sources · ${events.length} events`);
 }
 
-/* ---------- view state ---------------------------------------------------- */
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
-let centerJd = usToJd(211813444800000000), pxPerDay = 2;  /* ~2000 AD center */
-let layoutItems = [];    /* [{idx, x0, x1, y, h, thread}] in screen px */
-
+let layoutItems = [];
 function resize() {
   canvas.width = canvas.clientWidth * devicePixelRatio;
   canvas.height = canvas.clientHeight * devicePixelRatio;
   ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
-  layout();
-  draw();
+  layout(); draw();
 }
-window.addEventListener("resize", resize);
-
-function jdToX(jd) { return canvas.clientWidth / 2 + (jd - centerJd) * pxPerDay; }
-function xToJd(x) { return centerJd + (x - canvas.clientWidth / 2) / pxPerDay; }
-
-const AXIS_Y = () => canvas.clientHeight / 2;
-const ITEM_H = 22, TRACK_GAP = 4, ITEM_W_POINT = 120;
+const axisLength = () => viewState.orientation === "horizontal" ? canvas.clientWidth : canvas.clientHeight;
+const crossLength = () => viewState.orientation === "horizontal" ? canvas.clientHeight : canvas.clientWidth;
+const crossCenter = () => crossLength() * (0.15 + 0.70 * viewState.axisOffset / 100);
+function timeToAxis(jd) { return axisLength() / 2 + (jd - viewState.centerJd) * viewState.pxPerDay; }
+function axisToTime(pos) { return viewState.centerJd + (pos - axisLength() / 2) / viewState.pxPerDay; }
+const ITEM_H = 22, TRACK_GAP = 4, POINT_WIDTH = 120;
 
 function layout() {
   layoutItems = [];
-  const H = canvas.clientHeight;
-  const sideBudget = (H / 2) - 40;
+  const center = crossCenter(), budget = Math.max(ITEM_H, center - 25);
   for (const side of ["left", "right"]) {
     const sideThreads = threads.filter(t => t.side === side);
     if (!sideThreads.length) continue;
-    const share = 1 / sideThreads.length;
-    let bandY = AXIS_Y();
-    for (const th of sideThreads) {
-      const h = sideBudget * share * 0.92;
-      const yTop = side === "right" ? bandY + 6 : bandY - 6 - h;
-      /* Track count is bounded by the band height (mirrors the desktop
-         ThreadLayout: items that no longer fit fall back onto the last
-         track and overlap there) — without this clamp, dense clusters spill
-         out of the band: left-side items stack up past the axis to the top
-         of the screen (reported bug near 450 BC), right-side items spill
-         into the band below. */
-      const maxTracks = Math.max(1, Math.floor((h + TRACK_GAP) / (ITEM_H + TRACK_GAP)));
+    const totalShare = sideThreads.reduce((sum, t) => sum + Math.max(0.01, t.share), 0);
+    let nearEdge = side === "right" ? center + 6 : center - 6;
+    for (const thread of sideThreads) {
+      const bandSize = Math.max(ITEM_H, budget * Math.max(0.01, thread.share) / totalShare * 0.94);
+      const start = side === "right" ? nearEdge : nearEdge - bandSize;
+      const maxTracks = Math.max(1, Math.floor((bandSize + TRACK_GAP) / (ITEM_H + TRACK_GAP)));
       const trackEnds = [];
-      for (const ev of th.events.slice().sort(
-          (a, b) => (a.since ?? -1e30) - (b.since ?? -1e30))) {
-        if (ev.since == null) continue;
-        const x0 = jdToX(usToJd(ev.since));
-        const x1 = ev.until && ev.until !== ev.since
-          ? jdToX(usToJd(ev.until)) : x0 + ITEM_W_POINT;
-        let tr = trackEnds.findIndex(e => e <= x0);
-        if (tr === -1) {
-          if (trackEnds.length < maxTracks) {
-            trackEnds.push(0); tr = trackEnds.length - 1;
-          } else {
-            tr = maxTracks - 1;          /* fallback overlap, last track */
-          }
+      const items = thread.events.slice().sort((a, b) => (a.since ?? -1e30) - (b.since ?? -1e30));
+      for (const event of items) {
+        if (event.since == null) continue;
+        const t0 = timeToAxis(usToJd(event.since));
+        const t1 = event.until && event.until !== event.since ? timeToAxis(usToJd(event.until)) : t0 + POINT_WIDTH;
+        let track = trackEnds.findIndex(end => end <= Math.min(t0, t1));
+        if (track === -1) {
+          if (trackEnds.length < maxTracks) { trackEnds.push(0); track = trackEnds.length - 1; }
+          else track = maxTracks - 1;
         }
-        trackEnds[tr] = Math.max(x0, x1);
-        layoutItems.push({ idx: ev, x0, x1, tr, thread: th, yTop, bandH: h });
+        trackEnds[track] = Math.max(trackEnds[track], Math.max(t0, t1));
+        let cross;
+        if (side === "right") cross = start + track * (ITEM_H + TRACK_GAP);
+        else cross = start + bandSize - ITEM_H - track * (ITEM_H + TRACK_GAP);
+        if (viewState.orientation === "horizontal") {
+          layoutItems.push({ event, thread, t0, t1, x: t0, y: cross, w: t1 - t0, h: ITEM_H, track, bandSize });
+        } else {
+          layoutItems.push({ event, thread, t0, t1, x: cross, y: t0, w: ITEM_H, h: t1 - t0, track, bandSize });
+        }
       }
-      bandY = side === "right" ? bandY + 6 + h : bandY - 6 - h;
+      nearEdge = side === "right" ? nearEdge + bandSize + 6 : nearEdge - bandSize - 6;
     }
-  }
-  for (const it of layoutItems) {
-    it.y = it.thread.side === "right"
-      ? it.yTop + it.tr * (ITEM_H + TRACK_GAP)
-      : it.yTop + it.bandH - ITEM_H - it.tr * (ITEM_H + TRACK_GAP);
-  }
-}
-
-/* ---------- painting ------------------------------------------------------ */
-function draw() {
-  const W = canvas.clientWidth, H = canvas.clientHeight;
-  ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = "#fff5f7"; ctx.fillRect(0, 0, W, H);
-
-  /* thread bands */
-  for (const it of layoutItems.length ? [] : []) {}
-  const bands = new Map();
-  for (const it of layoutItems) bands.set(it.thread, it);
-  for (const [th, it] of bands) {
-    ctx.fillStyle = THREAD_COLORS[th.colorIdx][0] + "55";
-    ctx.fillRect(0, it.yTop, W, it.bandH);
-  }
-
-  /* axis */
-  ctx.strokeStyle = "#787878"; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(0, AXIS_Y()); ctx.lineTo(W, AXIS_Y()); ctx.stroke();
-
-  /* LOD tick layers: coarse -> fine */
-  const layers = tickLayers(centerJd, pxPerDay, W);
-  for (let i = layers.length - 1; i >= 0; i--) {
-    const { level, ticks, alpha, role } = layers[i];
-    const a = role === "demoted" ? 0.3 : alpha;
-    for (const t of ticks) {
-      const x = jdToX(t);
-      const len = role === "minor" ? 4 : 7;
-      ctx.strokeStyle = `rgba(100,100,100,${a})`;
-      ctx.lineWidth = role === "major" ? 1.5 : 1;
-      ctx.beginPath();
-      ctx.moveTo(x, AXIS_Y() - len); ctx.lineTo(x, AXIS_Y() + len); ctx.stroke();
-      if (role !== "minor") {
-        ctx.fillStyle = `rgba(50,50,50,${a})`;
-        ctx.font = "11px 'Segoe UI', sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText(tickLabel(t, level), x, AXIS_Y() + 22);
-      }
-    }
-  }
-
-  /* items */
-  ctx.font = "11px 'Segoe UI', 'Microsoft YaHei', sans-serif";
-  for (const it of layoutItems) {
-    if (it.x1 < -140 || it.x0 > W + 140) continue;   /* visibility culling */
-    const point = it.idx.until == null || it.idx.until === it.idx.since;
-    const color = THREAD_COLORS[it.thread.colorIdx][1];
-    const x0 = it.x0, x1 = point ? it.x0 + ITEM_W_POINT : Math.max(it.x1, it.x0 + 12);
-
-    if (point) {
-      /* Lollipop idiom (same as the desktop painter): an axis dot marks the
-         exact instant, a thin stem connects it to the card's axis-side edge,
-         and the card is anchored at its left edge (= the instant itself).
-         Replaces the old pin from the card's middle, whose meaning was
-         ambiguous. */
-      const innerY = it.thread.side === "right" ? it.y : it.y + ITEM_H;
-      if (ITEM_W_POINT / pxPerDay > 2 * 365.2425) {
-        /* Zoomed far out the fixed-width card would span centuries: degrade
-           to an instant tick on the card's lane plus the axis dot. */
-        ctx.strokeStyle = color; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(x0, it.y); ctx.lineTo(x0, it.y + ITEM_H); ctx.stroke();
-      } else {
-        ctx.strokeStyle = "#6e6e6e"; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(x0, innerY); ctx.lineTo(x0, AXIS_Y()); ctx.stroke();
-        ctx.fillStyle = "#f3f4f6"; ctx.strokeStyle = color; ctx.lineWidth = 1.2;
-        roundRect(ctx, x0, it.y, x1 - x0, ITEM_H, 4);
-        ctx.fill(); ctx.stroke();
-        ctx.fillStyle = "#1e1e1e"; ctx.textAlign = "left";
-        ctx.fillText(ellipsize(it.idx.abstract, x1 - x0 - 8), x0 + 5, it.y + 15);
-      }
-      ctx.fillStyle = "#5a5a5a";
-      ctx.beginPath(); ctx.arc(x0, AXIS_Y(), 3, 0, Math.PI * 2); ctx.fill();
-      continue;
-    }
-
-    ctx.fillStyle = color;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1.2;
-    roundRect(ctx, x0, it.y, x1 - x0, ITEM_H, 4);
-    ctx.fill(); ctx.stroke();
-    ctx.fillStyle = "#1e1e1e"; ctx.textAlign = "left";
-    ctx.fillText(ellipsize(it.idx.abstract, x1 - x0 - 8), x0 + 5, it.y + 15);
   }
 }
 function roundRect(c, x, y, w, h, r) {
-  c.beginPath();
-  c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r);
-  c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r);
-  c.arcTo(x, y, x + w, y, r); c.closePath();
+  c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r);
+  c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
 }
 function ellipsize(text, maxPx) {
   if (ctx.measureText(text).width <= maxPx) return text;
-  while (text && ctx.measureText(text + "…").width > maxPx)
-    text = text.slice(0, -1);
+  while (text && ctx.measureText(text + "…").width > maxPx) text = text.slice(0, -1);
   return text + "…";
 }
-
-/* ---------- interaction --------------------------------------------------- */
-let dragX = null;
-canvas.addEventListener("mousedown", e => {
-  dragX = e.clientX; canvas.classList.add("dragging");
-});
-window.addEventListener("mousemove", e => {
-  if (dragX !== null) {
-    centerJd -= (e.clientX - dragX) / pxPerDay;
-    dragX = e.clientX; layout(); draw();
+function draw() {
+  const W = canvas.clientWidth, H = canvas.clientHeight;
+  ctx.clearRect(0, 0, W, H); ctx.fillStyle = "#fff5f7"; ctx.fillRect(0, 0, W, H);
+  ctx.font = "12px 'Segoe UI', sans-serif"; ctx.textBaseline = "alphabetic";
+  for (const thread of threads) {
+    const sameSide = threads.filter(t => t.side === thread.side);
+    const totalShare = sameSide.reduce((sum, t) => sum + Math.max(0.01, t.share), 0);
+    let before = 0;
+    for (const t of sameSide) { if (t === thread) break; before += Math.max(0.01, t.share); }
+    const budget = Math.max(ITEM_H, crossCenter() - 25);
+    const bandSize = Math.max(ITEM_H, budget * Math.max(0.01, thread.share) / totalShare * 0.94);
+    const offset = budget * before / totalShare;
+    const near = crossCenter() + (thread.side === "right" ? 6 + offset : -6 - offset);
+    const start = thread.side === "right" ? near : near - bandSize;
+    const colors = thread.fixedColors || THREAD_COLORS[thread.colorIdx % THREAD_COLORS.length];
+    ctx.fillStyle = colors[0];
+    if (viewState.orientation === "horizontal") { roundRect(ctx, 0, start, W, bandSize, 5); ctx.fill(); }
+    else { roundRect(ctx, start, 0, bandSize, H, 5); ctx.fill(); }
+    ctx.fillStyle = "#6b7280"; ctx.save();
+    if (viewState.orientation === "horizontal") ctx.fillText(sourceKey(thread.source), 8, start + 15);
+    else { ctx.translate(start + bandSize - 6, 10); ctx.rotate(Math.PI / 2); ctx.fillText(sourceKey(thread.source), 0, 0); }
+    ctx.restore();
   }
-});
-window.addEventListener("mouseup", () => {
-  dragX = null; canvas.classList.remove("dragging");
-});
-canvas.addEventListener("wheel", e => {
-  e.preventDefault();
-  if (e.ctrlKey) {                       /* anchored zoom at cursor */
-    const mouseJd = xToJd(e.clientX);
-    const factor = e.deltaY < 0 ? 1.2 : 1 / 1.2;
-    pxPerDay = Math.min(1e8, Math.max(1e-11, pxPerDay * factor));
-    centerJd = mouseJd - (e.clientX - canvas.clientWidth / 2) / pxPerDay;
-  } else {
-    centerJd += (e.deltaY / 120) * 0.1 * canvas.clientWidth / pxPerDay * -1;
+  const axisPos = crossCenter();
+  ctx.strokeStyle = "#787878"; ctx.lineWidth = 2; ctx.beginPath();
+  if (viewState.orientation === "horizontal") { ctx.moveTo(0, axisPos); ctx.lineTo(W, axisPos); }
+  else { ctx.moveTo(axisPos, 0); ctx.lineTo(axisPos, H); }
+  ctx.stroke();
+  const layers = tickLayers(viewState.centerJd, viewState.pxPerDay, axisLength());
+  for (let i = layers.length - 1; i >= 0; i--) {
+    const layer = layers[i], alpha = layer.role === "demoted" ? 0.3 : layer.alpha;
+    for (const tick of layer.ticks) {
+      const pos = timeToAxis(tick); ctx.globalAlpha = alpha; ctx.strokeStyle = "#646464"; ctx.lineWidth = 1;
+      ctx.beginPath();
+      if (viewState.orientation === "horizontal") { ctx.moveTo(pos, axisPos); ctx.lineTo(pos, axisPos + (layer.role === "minor" ? 4 : 7)); }
+      else { ctx.moveTo(axisPos, pos); ctx.lineTo(axisPos + (layer.role === "minor" ? 4 : 7), pos); }
+      ctx.stroke();
+      ctx.save(); ctx.fillStyle = "#52525b";
+      if (viewState.orientation === "horizontal") {
+        ctx.textAlign = "center"; ctx.fillText(tickLabel(tick, layer.level), pos, axisPos + (layer.role === "minor" ? 19 : 22));
+      } else { ctx.translate(axisPos - 6, pos); ctx.rotate(-Math.PI / 2); ctx.textAlign = "center"; ctx.fillText(tickLabel(tick, layer.level), 0, 0); }
+      ctx.restore(); ctx.globalAlpha = 1;
+    }
   }
-  layout(); draw();
-}, { passive: false });
-
+  for (const item of layoutItems) {
+    const colors = item.thread.fixedColors || THREAD_COLORS[item.thread.colorIdx % THREAD_COLORS.length];
+    const point = item.event.until == null || item.event.until === item.event.since;
+    const color = colors[1];
+    const itemW = viewState.orientation === "horizontal" ? Math.max(item.w, point ? POINT_WIDTH : 12) : ITEM_H;
+    const itemH = viewState.orientation === "horizontal" ? ITEM_H : Math.max(item.h, point ? POINT_WIDTH : 12);
+    if (point && POINT_WIDTH / viewState.pxPerDay > 2 * 365.2425) {
+      ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+      if (viewState.orientation === "horizontal") { ctx.moveTo(item.x, item.y); ctx.lineTo(item.x, item.y + ITEM_H); }
+      else { ctx.moveTo(item.x, item.y); ctx.lineTo(item.x + ITEM_H, item.y); }
+      ctx.stroke();
+    } else {
+      if (point) { ctx.strokeStyle = "#6e6e6e"; ctx.lineWidth = 1; ctx.beginPath();
+        if (viewState.orientation === "horizontal") { ctx.moveTo(item.x, item.thread.side === "right" ? item.y : item.y + ITEM_H); ctx.lineTo(item.x, crossCenter()); }
+        else { ctx.moveTo(item.thread.side === "right" ? item.x : item.x + ITEM_H, item.y); ctx.lineTo(crossCenter(), item.y); }
+        ctx.stroke();
+      }
+      ctx.fillStyle = color; ctx.strokeStyle = color; ctx.lineWidth = 1.2;
+      roundRect(ctx, item.x, item.y, itemW, itemH, 4); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#1e1e1e";
+      if (viewState.orientation === "horizontal") { ctx.textAlign = "left"; ctx.fillText(ellipsize(item.event.abstract, itemW - 8), item.x + 5, item.y + 15); }
+      else { ctx.save(); ctx.translate(item.x + 15, item.y + itemH - 6); ctx.rotate(-Math.PI / 2); ctx.textAlign = "left"; ctx.fillText(ellipsize(item.event.abstract, itemH - 8), 0, 0); ctx.restore(); }
+    }
+    if (point) { ctx.fillStyle = "#5a5a5a"; ctx.beginPath();
+      const x = viewState.orientation === "horizontal" ? item.x : crossCenter();
+      const y = viewState.orientation === "horizontal" ? crossCenter() : item.y;
+      ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill(); }
+  }
+}
+/* ---------- canvas interactions ------------------------------------------- */
+function canvasPosition(event) {
+  const rect = canvas.getBoundingClientRect();
+  return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+}
 function itemAt(x, y) {
   for (let i = layoutItems.length - 1; i >= 0; i--) {
-    const it = layoutItems[i];
-    const x1 = (it.idx.until == null || it.idx.until === it.idx.since)
-      ? it.x0 + ITEM_W_POINT : Math.max(it.x1, it.x0 + 12);
-    if (x >= it.x0 && x <= x1 && y >= it.y && y <= it.y + ITEM_H) return it;
+    const item = layoutItems[i];
+    const point = item.event.until == null || item.event.until === item.event.since;
+    const w = point ? (viewState.orientation === "horizontal" ? POINT_WIDTH : ITEM_H) : Math.max(item.w, 12);
+    const h = point ? (viewState.orientation === "horizontal" ? ITEM_H : POINT_WIDTH) : Math.max(item.h, 12);
+    if (x >= item.x && x <= item.x + w && y >= item.y && y <= item.y + h) return item;
   }
   return null;
 }
-function fmtIndexTime(idx) {
+function threadAt(x, y) {
+  const hit = itemAt(x, y);
+  if (hit) return hit.thread;
+  const near = crossCenter();
+  const side = viewState.orientation === "horizontal" ? (y >= near ? "right" : "left") : (x >= near ? "right" : "left");
+  return threads.find(t => t.side === side) || null;
+}
+function sideAt(x, y) {
+  const near = crossCenter();
+  return viewState.orientation === "horizontal" ? (y >= near ? "right" : "left") : (x >= near ? "right" : "left");
+}
+function clickedTimeText(x, y) {
+  const jd = axisToTime(viewState.orientation === "horizontal" ? x : y);
+  const g = jdToGregorian(jd);
+  return `${fmtYear(g.year)}-${String(g.month).padStart(2, "0")}-${String(g.day).padStart(2, "0")}`;
+}
+function fmtIndexTime(index) {
   const fmt = us => {
     const g = jdToGregorian(usToJd(us));
-    const y = g.year <= 0 ? `${-(g.year - 1)} BC` : `${g.year}`;
-    return `${y}-${String(g.month).padStart(2,"0")}-${String(g.day).padStart(2,"0")}`;
+    return `${fmtYear(g.year)}-${String(g.month).padStart(2, "0")}-${String(g.day).padStart(2, "0")}`;
   };
-  if (idx.since == null) return "(no time)";
-  return idx.until && idx.until !== idx.since
-    ? `${fmt(idx.since)} ~ ${fmt(idx.until)}` : fmt(idx.since);
+  if (index.since == null) return "(no time)";
+  return index.until && index.until !== index.since ? `${fmt(index.since)} ~ ${fmt(index.until)}` : fmt(index.since);
 }
-
 const tooltip = document.getElementById("tooltip");
-canvas.addEventListener("mousemove", e => {
-  if (dragX !== null) { tooltip.style.display = "none"; return; }
-  const it = itemAt(e.clientX, e.clientY);
-  if (it) {
-    let text = `${fmtIndexTime(it.idx)}\n${it.idx.abstract}`;
-    if (it.idx.until && it.idx.until !== it.idx.since) {
-      const ys = jdToGregorian(usToJd(it.idx.since)).year;
-      const ye = jdToGregorian(usToJd(it.idx.until)).year;
-      const yc = Math.min(Math.max(jdToGregorian(xToJd(e.clientX)).year, ys), ye);
-      text += `\nYear ${yc - ys + 1} of ${ye - ys + 1}`;
-    }
-    tooltip.textContent = text;
-    tooltip.style.display = "block";
-    tooltip.style.left = e.clientX + 14 + "px";
-    tooltip.style.top = e.clientY + 14 + "px";
-  } else tooltip.style.display = "none";
+let dragStart = null, downPosition = null;
+canvas.addEventListener("mousedown", event => {
+  const pos = canvasPosition(event);
+  dragStart = pos; downPosition = pos;
+  canvas.classList.add("dragging");
+});
+window.addEventListener("mousemove", event => {
+  if (!dragStart) return;
+  const pos = canvasPosition(event);
+  const delta = viewState.orientation === "horizontal" ? pos.x - dragStart.x : pos.y - dragStart.y;
+  viewState.centerJd -= delta / viewState.pxPerDay;
+  dragStart = pos; layout(); draw();
+});
+window.addEventListener("mouseup", () => { dragStart = null; canvas.classList.remove("dragging"); });
+canvas.addEventListener("wheel", event => {
+  event.preventDefault();
+  const pos = canvasPosition(event);
+  if (event.ctrlKey) {
+    const axisPosition = viewState.orientation === "horizontal" ? pos.x : pos.y;
+    const mouseJd = axisToTime(axisPosition);
+    const factor = event.deltaY < 0 ? 1.2 : 1 / 1.2;
+    viewState.pxPerDay = Math.min(1e8, Math.max(1e-11, viewState.pxPerDay * factor));
+    viewState.centerJd = mouseJd - (axisPosition - axisLength() / 2) / viewState.pxPerDay;
+  } else {
+    const delta = (event.deltaY + event.deltaX) / 120 * 0.1 * axisLength() / viewState.pxPerDay;
+    viewState.centerJd += delta;
+  }
+  layout(); draw(); persist();
+}, { passive: false });
+canvas.addEventListener("mousemove", event => {
+  if (dragStart) { tooltip.style.display = "none"; return; }
+  const pos = canvasPosition(event), item = itemAt(pos.x, pos.y);
+  if (!item) { tooltip.style.display = "none"; return; }
+  let text = `${fmtIndexTime(item.event)}\n${sourceDisplay(item.event.source)}\n${item.event.abstract}`;
+  tooltip.textContent = text;
+  tooltip.style.display = "block";
+  tooltip.style.left = `${event.clientX + 14}px`;
+  tooltip.style.top = `${event.clientY + 14}px`;
+});
+canvas.addEventListener("mouseleave", () => tooltip.style.display = "none");
+canvas.addEventListener("click", event => {
+  if (downPosition) {
+    const startPosition = canvasPosition(event);
+    if (Math.hypot(startPosition.x - downPosition.x, startPosition.y - downPosition.y) > 6) return;
+  }
+  const pos = canvasPosition(event), item = itemAt(pos.x, pos.y);
+  if (item) showEvent(item.event.uuid);
+});
+canvas.addEventListener("dblclick", event => {
+  const pos = canvasPosition(event), item = itemAt(pos.x, pos.y);
+  if (item) { showEvent(item.event.uuid, true); return; }
+  const thread = threadAt(pos.x, pos.y);
+  if (thread && !thread.custom && thread.source) openEditorForNew(thread.source, clickedTimeText(pos.x, pos.y));
+});
+canvas.addEventListener("contextmenu", event => {
+  event.preventDefault();
+  const pos = canvasPosition(event), item = itemAt(pos.x, pos.y);
+  contextThread = item ? item.thread : threadAt(pos.x, pos.y);
+  const menu = document.getElementById("context-menu");
+  menu.replaceChildren();
+  const addButton = (label, handler, enabled = true) => {
+    const button = document.createElement("button");
+    button.textContent = label; button.disabled = !enabled;
+    button.onclick = () => { hideMenus(); handler(); };
+    menu.append(button);
+  };
+  if (item) addButton("Edit event", () => showEvent(item.event.uuid, true));
+  if (item && !item.thread.custom) addButton("Delete event", () => deleteEvent(item.event.uuid));
+  if (item) menu.append(Object.assign(document.createElement("hr")));
+  addButton("Add thread", () => openThreadManager());
+  addButton("Load file", () => openFileDialog());
+  if (contextThread && !contextThread.custom && contextThread.source)
+    addButton("New event", () => openEditorForNew(contextThread.source, clickedTimeText(pos.x, pos.y)));
+  if (contextThread && !contextThread.custom && contextThread.source)
+    addButton("Quick entry", () => openQuickEntry(contextThread, clickedTimeText(pos.x, pos.y)));
+  if (contextThread) addButton("Set thread share…", () => openThreadManager(contextThread.source));
+  if (contextThread) addButton("Switch side", () => switchThreadSide(contextThread.source));
+  if (contextThread) addButton("Remove this thread", () => removeThread(contextThread.source));
+  menu.append(Object.assign(document.createElement("hr")));
+  addButton("Fit to view", fitToView);
+  addButton("Toggle orientation", toggleOrientation);
+  menu.style.display = "block";
+  menu.style.left = `${event.clientX}px`; menu.style.top = `${event.clientY}px`;
 });
 
-let downPos = null;
-canvas.addEventListener("mousedown", e => { downPos = [e.clientX, e.clientY]; });
-canvas.addEventListener("click", e => {
-  if (downPos && Math.hypot(e.clientX - downPos[0], e.clientY - downPos[1]) > 6)
-    return;                               /* it was a drag */
-  const it = itemAt(e.clientX, e.clientY);
-  if (it) showDetails(it.idx);
+/* ---------- menus and dialogs ---------------------------------------------- */
+function hideMenus() {
+  document.querySelectorAll(".menu.open").forEach(menu => menu.classList.remove("open"));
+  document.getElementById("context-menu").style.display = "none";
+}
+document.querySelectorAll("[data-menu-button]").forEach(button => {
+  button.onclick = event => {
+    event.stopPropagation();
+    const parent = button.parentElement, open = parent.classList.contains("open");
+    hideMenus();
+    if (!open) parent.classList.add("open");
+  };
 });
-canvas.addEventListener("dblclick", e => {
-  const it = itemAt(e.clientX, e.clientY);
-  if (it) { showDetails(it.idx).then(() => setEditMode(true)); }
-  else {
-    const jd = xToJd(e.clientX);
-    const g = jdToGregorian(jd);
-    const y = g.year <= 0 ? `${-(g.year - 1)} BC` : `${g.year}`;
-    const timeText = `${y}-${String(g.month).padStart(2,"0")}-${String(g.day).padStart(2,"0")}`;
-    /* quick create on empty band: nearest thread or fresh source */
-    showQuickCreate(timeText);
+document.addEventListener("click", event => {
+  if (!event.target.closest(".menu") && !event.target.closest("#context-menu")) hideMenus();
+});
+function openDialog(id) { document.getElementById(id).classList.add("open"); }
+function closeDialog(id) { document.getElementById(id).classList.remove("open"); }
+document.querySelectorAll("[data-close]").forEach(button => button.onclick = () => closeDialog(button.dataset.close));
+document.querySelectorAll(".dialog-overlay").forEach(overlay => overlay.onclick = event => {
+  if (event.target === overlay) overlay.classList.remove("open");
+});
+document.querySelectorAll("[data-action]").forEach(button => button.onclick = () => { hideMenus(); runAction(button.dataset.action); });
+function runAction(action) {
+  if (action === "files") openFileDialog();
+  else if (action === "editor") openEditorForNew(activeEditorSource(), "");
+  else if (action === "filter") openFilterDialog();
+  else if (action === "threads") openThreadManager();
+  else if (action === "fit") fitToView();
+  else if (action === "orientation") toggleOrientation();
+  else if (action === "reload") reload().catch(error => setStatus(`load failed: ${error.message}`));
+  else if (action === "save") saveSource(activeEditorSource());
+  else if (action === "help") showTextDialog("Help Contents", [
+    "Navigation",
+    "• Drag to pan; wheel to move time; Ctrl+Wheel to zoom",
+    "• Click an event for details; double-click to edit",
+    "",
+    "Editing",
+    "• Right-click a thread for New event and Quick entry",
+    "• Thread Manager controls sides, shares, and axis offset",
+    "• Ctrl+E opens the editor; Ctrl+S applies editor changes",
+    "",
+    "Files",
+    "• Ctrl+O lists server-approved files only",
+    "• Web edits are written back to the corresponding allowed file"
+  ].join("\n"));
+  else if (action === "about") showTextDialog("About UniversalHistory", [
+    "UniversalHistory web workspace",
+    "",
+    "A timeline-centric viewer and editor for historical records.",
+    "Times use exact Julian Day Number microseconds and the proleptic Gregorian calendar.",
+    "Astronomical year 0 means 1 BC."
+  ].join("\n"));
+}
+window.addEventListener("keydown", event => {
+  if (event.key === "Escape") {
+    hideMenus();
+    document.querySelectorAll(".dialog-overlay.open").forEach(dialog => dialog.classList.remove("open"));
   }
+  const mod = event.ctrlKey && !event.altKey && !event.metaKey;
+  if (!mod) return;
+  const key = event.key.toLowerCase();
+  if (key === "o") { event.preventDefault(); runAction("files"); }
+  else if (key === "e") { event.preventDefault(); runAction("editor"); }
+  else if (key === "l") { event.preventDefault(); runAction("filter"); }
+  else if (key === "m") { event.preventDefault(); runAction("threads"); }
+  else if (key === "0") { event.preventDefault(); runAction("fit"); }
+  else if (key === "t") { event.preventDefault(); runAction("orientation"); }
+  else if (key === "s" && editor.classList.contains("open")) { event.preventDefault(); applyEditor(); }
 });
 
-/* ---------- details / edit panel ------------------------------------------ */
-const panel = document.getElementById("panel");
-const pTitle = document.getElementById("p-title");
-const pMeta = document.getElementById("p-meta");
-const pView = document.getElementById("p-view");
-const pEdit = document.getElementById("p-edit");
-const btnEdit = document.getElementById("btn-edit");
-const btnSave = document.getElementById("btn-save");
-const btnDelete = document.getElementById("btn-delete");
-
-async function showDetails(idx) {
-  selected = await api("/api/events/" + idx.uuid);
-  setEditMode(false);
-  const L = k => (selected.labels[k] || []).join(", ");
-  pTitle.textContent = L("title") || idx.abstract || "(untitled)";
-  pMeta.textContent = `${fmtIndexTime(idx)} · ${selected.source}`;
-  pView.innerHTML = "";
-  if (L("brief")) pView.insertAdjacentHTML("beforeend",
-      `<p>${escapeHtml(L("brief"))}</p>`);
-  if (L("event")) pView.insertAdjacentHTML("beforeend",
-      `<p>${escapeHtml(L("event")).replace(/\n/g, "<br>")}</p>`);
-  if (L("location")) pView.insertAdjacentHTML("beforeend",
-      `<p>📍 ${escapeHtml(L("location"))}</p>`);
-  if (L("people")) pView.insertAdjacentHTML("beforeend",
-      `<p>👤 ${escapeHtml(L("people"))}</p>`);
-  if (L("organization")) pView.insertAdjacentHTML("beforeend",
-      `<p>🏛 ${escapeHtml(L("organization"))}</p>`);
-  if (L("tags")) pView.insertAdjacentHTML("beforeend",
-      `<p>🏷 ${escapeHtml(L("tags"))}</p>`);
-  panel.classList.add("open");
-  resize();
+/* ---------- server file panel ---------------------------------------------- */
+const fileList = document.getElementById("file-list"), fileError = document.getElementById("file-error");
+function formatFileSize(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
-function escapeHtml(s) {
-  return s.replace(/[&<>"]/g, c =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-}
-function setEditMode(on) {
-  if (on && selected) {
-    document.getElementById("e-title").value =
-      (selected.labels.title || [""])[0];
-    document.getElementById("e-brief").value =
-      (selected.labels.brief || [""])[0];
-    document.getElementById("e-event").value =
-      (selected.labels.event || [""])[0];
-    document.getElementById("e-time").value =
-      (selected.labels.time || [""])[0];
-  }
-  pView.style.display = on ? "none" : "block";
-  pEdit.style.display = on ? "block" : "none";
-  btnEdit.style.display = on ? "none" : "";
-  btnSave.style.display = on ? "" : "none";
-}
-btnEdit.onclick = () => setEditMode(true);
-btnSave.onclick = async () => {
-  if (!selected) return;
-  const timeText = document.getElementById("e-time").value.trim();
-  const parsed = await api("/api/parse_time?text=" +
-      encodeURIComponent(timeText)).catch(() => null);
-  if (!parsed || parsed.since == null) {
-    document.getElementById("err").textContent =
-      "Time field is required and must be parseable.";
-    return;
-  }
-  document.getElementById("err").textContent = "";
-  selected.labels.title = [document.getElementById("e-title").value];
-  selected.labels.brief = [document.getElementById("e-brief").value];
-  selected.labels.event = [document.getElementById("e-event").value];
-  selected.labels.time = [timeText];
-  selected.since = parsed.since; selected.until = parsed.until;
-  await api("/api/events", { method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(selected) });
-  setEditMode(false);
-  showDetails(selected);
-};
-btnDelete.onclick = async () => {
-  if (!selected) return;
-  if (!confirm(`Delete '${pTitle.textContent}'?`)) return;
-  await api("/api/events/" + selected.uuid, { method: "DELETE" });
-  panel.classList.remove("open"); selected = null; resize();
-};
-document.getElementById("btn-close").onclick = () => {
-  panel.classList.remove("open"); resize();
-};
-
-async function showQuickCreate(timeText) {
-  const title = prompt(`New event at ${timeText}\nTitle:`);
-  if (!title) return;
-  const parsed = await api("/api/parse_time?text=" +
-      encodeURIComponent(timeText));
-  const source = threads.length ? threads[0].source : "quick.uh.json";
-  await api("/api/events", { method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      source, since: parsed.since, until: parsed.until,
-      labels: { title: [title], time: [timeText] },
-    }) });
-}
-
-/* ---------- server file panel -------------------------------------------- */
-const fileDialog = document.getElementById("file-dialog");
-const fileList = document.getElementById("file-list");
-const fileDialogError = document.getElementById("file-dialog-error");
-
-function formatFileSize(sizeBytes) {
-  if (sizeBytes < 1024) return `${sizeBytes} B`;
-  if (sizeBytes < 1024 * 1024) return `${(sizeBytes / 1024).toFixed(1)} KB`;
-  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 function makeFileItem(file) {
-  const item = document.createElement("div");
-  item.className = "file-item";
-
-  const details = document.createElement("div");
-  details.className = "file-details";
-
-  const name = document.createElement("div");
-  name.className = "file-name";
-  name.textContent = file.name;
-
-  const path = document.createElement("div");
-  path.className = "file-path";
-  path.textContent = file.path;
-
-  const meta = document.createElement("div");
-  meta.className = "file-meta";
-  meta.textContent =
-    `${file.format.toUpperCase()} · ${formatFileSize(file.size_bytes)}`;
-
-  const action = document.createElement("button");
-  action.className = "file-load-button";
+  const row = document.createElement("div"); row.className = "file-item";
+  const details = document.createElement("div"); details.className = "file-details";
+  details.innerHTML = `<div class="file-name"></div><div class="file-path"></div><div class="file-meta"></div>`;
+  details.querySelector(".file-name").textContent = file.name;
+  details.querySelector(".file-path").textContent = file.path;
+  details.querySelector(".file-meta").textContent = `${file.format.toUpperCase()} · ${formatFileSize(file.size_bytes)}`;
+  const action = document.createElement("button"); action.className = "btn";
   action.textContent = file.loaded ? "Reload" : "Load";
   action.onclick = async () => {
-    action.disabled = true;
-    action.textContent = "Loading…";
-    fileDialogError.textContent = "";
+    action.disabled = true; action.textContent = "Loading…"; fileError.textContent = "";
     try {
       const result = await api("/api/files/load", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ file_id: file.id }),
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file_id: file.id })
       });
-      file.loaded = true;
-      action.textContent = "Reload";
-      await reload();
+      await reload(); fitToView();
       setStatus(`Loaded ${result.event_count} events from ${file.name}`);
-    } catch (e) {
-      fileDialogError.textContent = e.message;
+      action.textContent = "Reload";
+    } catch (error) {
+      fileError.textContent = error.message;
       action.textContent = file.loaded ? "Reload" : "Load";
-    } finally {
-      action.disabled = false;
-    }
+    } finally { action.disabled = false; }
   };
-
   if (file.loaded) {
-    const badge = document.createElement("span");
-    badge.className = "loaded-badge";
-    badge.textContent = "Loaded";
-    details.append(name, path, meta);
-    item.append(details, badge, action);
-  } else {
-    details.append(name, path, meta);
-    item.append(details, action);
-  }
-  return item;
+    const badge = document.createElement("span"); badge.className = "loaded-badge"; badge.textContent = "Loaded";
+    row.append(details, badge, action);
+  } else row.append(details, action);
+  return row;
 }
-
+async function openFileDialog() { openDialog("file-dialog"); await refreshFiles(); }
 async function refreshFiles() {
-  fileDialogError.textContent = "";
-  fileList.replaceChildren();
-  const empty = document.createElement("div");
-  empty.className = "dialog-empty";
-  empty.textContent = "Loading…";
-  fileList.append(empty);
+  fileError.textContent = ""; fileList.replaceChildren();
+  const loading = document.createElement("div"); loading.className = "dialog-empty"; loading.textContent = "Loading…";
+  fileList.append(loading);
   try {
     const catalog = await api("/api/files");
     fileList.replaceChildren();
     if (!catalog.files.length) {
-      empty.textContent =
-        "No server files are available. Start the server with --allow-root.";
-      fileList.append(empty);
-      return;
+      const empty = document.createElement("div"); empty.className = "dialog-empty";
+      empty.textContent = "No server files are available. Start the server with --allow-root.";
+      fileList.append(empty); return;
     }
     for (const file of catalog.files) fileList.append(makeFileItem(file));
-  } catch (e) {
-    fileDialogError.textContent = e.message;
-    empty.textContent = "Unable to load the file list.";
-    fileList.append(empty);
+  } catch (error) {
+    fileError.textContent = error.message; loading.textContent = "Unable to load the file list.";
   }
 }
+/* ---------- thread manager -------------------------------------------------- */
+function sourceDisplay(source) { return source === "__filter__" ? "(filter result)" : source || "(empty thread)"; }
+function firstWritableSource() {
+  const thread = threads.find(t => t.source && t.source !== "__filter__");
+  return thread ? thread.source : "";
+}
+function activeEditorSource() { return document.getElementById("ed-source").value || firstWritableSource(); }
+function allThreadOptions() {
+  return workspaceSources.filter(source => source && source !== "__filter__").sort();
+}
+function openThreadManager(source = "") {
+  openDialog("thread-dialog");
+  managerSelection = source || threads[0]?.source || null;
+  renderThreadManager();
+}
+function renderThreadManager() {
+  if (!document.getElementById("thread-dialog").classList.contains("open")) return;
+  document.getElementById("axis-offset").value = viewState.axisOffset;
+  const select = document.getElementById("thread-add-source"), oldValue = select.value;
+  select.replaceChildren();
+  const placeholder = document.createElement("option");
+  placeholder.value = ""; placeholder.textContent = "No source selected";
+  select.append(placeholder);
+  for (const source of allThreadOptions()) {
+    const option = document.createElement("option");
+    option.value = source; option.textContent = sourceDisplay(source);
+    select.append(option);
+  }
+  select.value = allThreadOptions().includes(oldValue) ? oldValue : "";
+  select.onchange = renderThreadManager;
+  const left = document.getElementById("left-threads"), right = document.getElementById("right-threads");
+  left.replaceChildren(); right.replaceChildren();
+  for (const thread of threads) {
+    const container = thread.side === "left" ? left : right;
+    const row = document.createElement("div");
+    row.className = "thread-item" + (managerSelection === thread.source ? " selected" : "");
+    const details = document.createElement("div"); details.className = "thread-details";
+    const name = document.createElement("div"); name.textContent = sourceDisplay(thread.source);
+    const sub = document.createElement("div"); sub.className = "thread-sub";
+    sub.textContent = `${thread.eventCount} events · share=${Math.round(thread.share * 100)}%${thread.custom ? " · memory only" : ""}`;
+    details.append(name, sub); row.append(details);
+    row.onclick = () => { managerSelection = thread.source; renderThreadManager(); };
+    container.append(row);
+  }
+  if (!left.children.length) { const empty = document.createElement("div"); empty.className = "dialog-empty"; empty.textContent = "No left threads"; left.append(empty); }
+  if (!right.children.length) { const empty = document.createElement("div"); empty.className = "dialog-empty"; empty.textContent = "No right threads"; right.append(empty); }
+  const selectedThread = threads.find(t => t.source === managerSelection);
+  const shareInput = document.getElementById("thread-share");
+  shareInput.disabled = !selectedThread || threads.filter(t => t.side === selectedThread.side).length <= 1;
+  shareInput.value = selectedThread ? selectedThread.share.toFixed(2) : "";
+  document.getElementById("thread-add-left").disabled = !select.value;
+  document.getElementById("thread-add-right").disabled = !select.value;
+}
+document.getElementById("axis-offset").oninput = event => {
+  viewState.axisOffset = Number(event.target.value); layout(); draw(); persist();
+};
+document.getElementById("thread-share").onchange = event => {
+  const thread = threads.find(t => t.source === managerSelection);
+  if (!thread) return;
+  const share = Math.min(0.99, Math.max(0.01, Number(event.target.value) || 0.5));
+  thread.share = share; threadMeta(thread.source).share = share;
+  layout(); draw(); persist(); renderThreadManager();
+};
+document.getElementById("thread-add-left").onclick = () => addThreadFromSelection("left");
+document.getElementById("thread-add-right").onclick = () => addThreadFromSelection("right");
+function addThreadFromSelection(side) {
+  const source = document.getElementById("thread-add-source").value;
+  if (!source) return;
+  const meta = threadMeta(source);
+  meta.side = side; meta.visible = true;
+  if (!threads.some(t => t.source === source)) {
+    const maxOrder = Math.max(-1, ...Object.values(viewState.threadMeta).map(item => item.order ?? 0));
+    meta.order = maxOrder + 1;
+    const events = allEvents.filter(event => event.source === source);
+    threads.push({ source, events, eventCount: events.length, side, share: meta.share,
+      colorIdx: meta.colorIdx, order: meta.order, custom: false });
+  }
+  managerSelection = source;
+  threads.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  layout(); draw(); persist(); renderThreadManager();
+  setStatus(`${sourceDisplay(source)} added on the ${side} side`);
+}
+document.getElementById("thread-up").onclick = () => moveThread(-1);
+document.getElementById("thread-down").onclick = () => moveThread(1);
+function moveThread(delta) {
+  const thread = threads.find(t => t.source === managerSelection);
+  if (!thread) return;
+  const sameSide = threads.filter(t => t.side === thread.side).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const index = sameSide.indexOf(thread), swap = sameSide[index + delta];
+  if (!swap) return;
+  const oldOrder = thread.order;
+  thread.order = swap.order; swap.order = oldOrder;
+  threadMeta(thread.source).order = thread.order;
+  threadMeta(swap.source).order = swap.order;
+  threads.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  layout(); draw(); persist(); renderThreadManager();
+}
+function switchThreadSide(source) {
+  const meta = threadMeta(source);
+  meta.side = meta.side === "left" ? "right" : "left";
+  meta.order = Math.max(-1, ...Object.values(viewState.threadMeta).map(item => item.order ?? 0)) + 1;
+  const thread = threads.find(item => item.source === source);
+  if (thread) { thread.side = meta.side; thread.order = meta.order; threads.sort((a, b) => (a.order ?? 0) - (b.order ?? 0)); }
+  layout(); draw(); persist(); renderThreadManager();
+}
+function removeThread(source) {
+  if (!confirm(`Remove '${sourceDisplay(source)}' from the view?\nEvents remain in the workspace.`)) return;
+  threadMeta(source).visible = false;
+  threads = threads.filter(thread => thread.source !== source);
+  if (source === "__filter__") { filterEvents = null; viewState.filterConfig = null; }
+  managerSelection = null;
+  layout(); draw(); persist(); renderThreadManager();
+}
+document.getElementById("thread-switch").onclick = () => managerSelection && switchThreadSide(managerSelection);
+document.getElementById("thread-remove").onclick = () => managerSelection && removeThread(managerSelection);
 
-function closeFileDialog() {
-  fileDialog.classList.remove("open");
+/* ---------- filter ----------------------------------------------------------- */
+function openFilterDialog() {
+  const select = document.getElementById("filter-source");
+  select.replaceChildren();
+  const empty = document.createElement("option"); empty.value = ""; empty.textContent = "(all sources)";
+  select.append(empty);
+  for (const thread of threads.filter(t => t.source !== "__filter__")) {
+    const option = document.createElement("option"); option.value = thread.source;
+    option.textContent = sourceDisplay(thread.source); select.append(option);
+  }
+  const config = viewState.filterConfig;
+  if (config) {
+    select.value = config.source || "";
+    document.getElementById("filter-focus").value = config.focus || "";
+    document.getElementById("filter-include").value = config.includeText || "";
+    document.getElementById("filter-exclude").value = config.excludeText || "";
+    document.getElementById("filter-from").value = config.fromText || "";
+    document.getElementById("filter-to").value = config.toText || "";
+  }
+  openDialog("filter-dialog");
+}
+async function parseFilterBound(text, useUntil = false) {
+  if (!text) return null;
+  const parsed = await api(`/api/parse_time?text=${encodeURIComponent(text)}`);
+  const value = useUntil && parsed.until != null ? parsed.until : parsed.since;
+  if (value == null) throw new Error(text);
+  return value;
+}
+async function applyFilter() {
+  const error = document.getElementById("filter-error"); error.textContent = "";
+  const config = {
+    source: document.getElementById("filter-source").value,
+    focus: document.getElementById("filter-focus").value.trim(),
+    includeText: document.getElementById("filter-include").value,
+    excludeText: document.getElementById("filter-exclude").value,
+    fromText: document.getElementById("filter-from").value.trim(),
+    toText: document.getElementById("filter-to").value.trim()
+  };
+  try {
+    const lo = await parseFilterBound(config.fromText);
+    const hi = await parseFilterBound(config.toText, true);
+    const query = new URLSearchParams();
+    if (config.source) query.set("source", config.source);
+    if (config.focus) query.set("focus_label", config.focus);
+    if (config.includeText.trim()) query.set("include_labels", config.includeText.trim());
+    if (config.excludeText.trim()) query.set("exclude_labels", config.excludeText.trim());
+    if (lo != null) query.set("time_from", String(lo));
+    if (hi != null) query.set("time_to", String(hi));
+    filterEvents = await api(`/api/events?${query.toString()}`);
+    viewState.filterConfig = config;
+    const meta = threadMeta("__filter__");
+    meta.side = "left"; meta.visible = true;
+    meta.colorIdx = THREAD_COLORS.length;
+    if (!threads.some(thread => thread.source === "__filter__")) {
+      threads.push({ source: "__filter__", events: filterEvents, eventCount: filterEvents.length,
+        side: "left", share: meta.share, colorIdx: meta.colorIdx, order: meta.order,
+        custom: true, fixedColors: ["#dce6f0", "#c8d2f0"] });
+    }
+    const thread = threads.find(item => item.source === "__filter__");
+    thread.events = filterEvents; thread.eventCount = filterEvents.length;
+    threads.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    closeDialog("filter-dialog"); layout(); draw(); persist();
+    setStatus(`Filter result: ${filterEvents.length} events`);
+    if (filterEvents.length) fitToView();
+  } catch (error) {
+    error.textContent = `Parse Error: Cannot parse time: ${error.message}`;
+  }
+}
+document.getElementById("filter-apply").onclick = applyFilter;
+/* ---------- event editor ------------------------------------------------------ */
+function switchTab(name) {
+  if (!loadingEditor) {
+    if (name === "labels" && editorTab !== "labels") syncTableFromForm();
+    else if (name !== "labels" && editorTab === "labels") syncFormFromTable();
+  }
+  document.querySelectorAll("#editor-tabs button").forEach(button =>
+    button.classList.toggle("active", button.dataset.tab === name));
+  for (const page of ["details", "form", "labels"])
+    document.getElementById(`page-${page}`).classList.toggle("active", page === name);
+  editorTab = name;
+}
+document.querySelectorAll("#editor-tabs button").forEach(button =>
+  button.onclick = () => switchTab(button.dataset.tab));
+function sourceOptions() {
+  return allThreadOptions();
+}
+function refreshEditor() {
+  const sourceSelect = document.getElementById("ed-source"), oldValue = sourceSelect.value;
+  sourceSelect.replaceChildren();
+  const options = sourceOptions();
+  if (!options.length) {
+    const option = document.createElement("option");
+    option.value = ""; option.textContent = "No writable source";
+    sourceSelect.append(option);
+  }
+  for (const source of options) {
+    const option = document.createElement("option");
+    option.value = source; option.textContent = sourceDisplay(source);
+    sourceSelect.append(option);
+  }
+  if (options.includes(oldValue)) sourceSelect.value = oldValue;
+  else if (options.length) sourceSelect.value = options[0];
+  if (!loadingEditor) refreshRecordList();
+  if (selected && !editorDirty) loadEventIntoEditor(selected, false);
+}
+function refreshRecordList() {
+  const combo = document.getElementById("ed-record"), source = document.getElementById("ed-source").value;
+  const records = allEvents.filter(event => event.source === source).sort((a, b) =>
+    (a.since ?? Number.MAX_SAFE_INTEGER) - (b.since ?? Number.MAX_SAFE_INTEGER));
+  combo.replaceChildren();
+  const blank = document.createElement("option");
+  blank.value = ""; blank.textContent = "New record";
+  combo.append(blank);
+  for (const record of records) {
+    const option = document.createElement("option");
+    option.value = record.uuid;
+    option.textContent = `[${record.since == null ? "?" : fmtIndexTime(record).split(" ~ ")[0]}] ${record.abstract || "(untitled)"}`;
+    combo.append(option);
+  }
+  combo.value = selected?.uuid || "";
+}
+async function showEvent(uuid, edit = false) {
+  selected = await api(`/api/events/${encodeURIComponent(uuid)}`);
+  editor.classList.add("open"); resize();
+  await loadEventIntoEditor(selected, false);
+  if (edit) setEditMode(true);
+}
+function setEditMode(on) {
+  document.getElementById("ed-apply").style.display = on ? "" : "none";
+  document.getElementById("ed-edit").style.display = on ? "none" : "";
+  if (on) switchTab("form"); else switchTab("details");
+}
+function addLabelRow(label = "", tags = "") {
+  const row = document.createElement("div"); row.className = "label-row";
+  row.innerHTML = `<input class="label-name" placeholder="label"><input class="label-tags" placeholder="tag1, tag2"><button class="btn">×</button>`;
+  row.querySelector(".label-name").value = label;
+  row.querySelector(".label-tags").value = tags;
+  row.querySelector("button").onclick = () => { row.remove(); markDirty(); };
+  row.querySelectorAll("input").forEach(input => input.oninput = markDirty);
+  document.getElementById("label-table").append(row);
+}
+function syncTable(labels) {
+  const table = document.getElementById("label-table");
+  table.replaceChildren();
+  for (const [label, tags] of Object.entries(labels || {})) addLabelRow(label, tags.join(", "));
+  if (!table.children.length) addLabelRow("", "");
+}
+function labelTableLabels() {
+  const labels = {};
+  for (const row of document.querySelectorAll("#label-table .label-row")) {
+    const label = row.querySelector(".label-name").value.trim();
+    const tags = row.querySelector(".label-tags").value.split(",").map(tag => tag.trim()).filter(Boolean);
+    if (!label || !tags.length) continue;
+    if (!labels[label]) labels[label] = [];
+    labels[label].push(...tags);
+  }
+  return labels;
+}
+function syncTableFromForm() {
+  const labels = labelTableLabels();
+  const formValues = {
+    time: document.getElementById("ed-time").value.trim(),
+    location: document.getElementById("ed-location").value.trim(),
+    people: document.getElementById("ed-people").value.trim(),
+    organization: document.getElementById("ed-organization").value.trim(),
+    tags: document.getElementById("ed-tags").value.trim(),
+    title: document.getElementById("ed-title").value.trim(),
+    brief: document.getElementById("ed-brief").value.trim(),
+    event: document.getElementById("ed-event").value.trim()
+  };
+  for (const [label, value] of Object.entries(formValues)) {
+    const values = ["time", "location", "people", "organization", "tags"].includes(label)
+      ? value.split(",").map(tag => tag.trim()).filter(Boolean)
+      : value ? [value] : [];
+    if (values.length) labels[label] = values;
+    else delete labels[label];
+  }
+  syncTable(labels);
+}
+function syncFormFromTable() {
+  const labels = labelTableLabels();
+  const join = label => (labels[label] || []).join(", ");
+  document.getElementById("ed-time").value = join("time");
+  document.getElementById("ed-location").value = join("location");
+  document.getElementById("ed-people").value = join("people");
+  document.getElementById("ed-organization").value = join("organization");
+  document.getElementById("ed-tags").value = join("tags");
+  document.getElementById("ed-title").value = (labels.title || [""])[0] || "";
+  document.getElementById("ed-brief").value = (labels.brief || [""])[0] || "";
+  document.getElementById("ed-event").value = (labels.event || [""])[0] || "";
+}
+document.getElementById("add-label").onclick = () => addLabelRow();
+async function loadEventIntoEditor(event, editMode) {
+  loadingEditor = true;
+  const sourceSelect = document.getElementById("ed-source");
+  if (sourceOptions().includes(event.source)) sourceSelect.value = event.source;
+  sourceSelect.disabled = !!event.uuid;
+  document.getElementById("ed-uuid").value = event.uuid || "(new)";
+  document.getElementById("ed-time").value = (event.labels?.time || []).join(", ");
+  document.getElementById("ed-location").value = (event.labels?.location || []).join(", ");
+  document.getElementById("ed-people").value = (event.labels?.people || []).join(", ");
+  document.getElementById("ed-organization").value = (event.labels?.organization || []).join(", ");
+  document.getElementById("ed-tags").value = (event.labels?.tags || []).join(", ");
+  document.getElementById("ed-title").value = (event.labels?.title || [""])[0] || "";
+  document.getElementById("ed-brief").value = (event.labels?.brief || [""])[0] || "";
+  document.getElementById("ed-event").value = (event.labels?.event || [""])[0] || "";
+  const focus = ["time", "location", "people", "organization", "event"].includes(event.focus_label) ? event.focus_label : "event";
+  document.querySelector(`input[name=ed-focus][value="${focus}"]`).checked = true;
+  syncTable(event.labels || {});
+  document.getElementById("editor-error").textContent = "";
+  document.getElementById("editor-title").textContent = event.uuid ? event.abstract || "Event" : "New Event";
+  refreshRecordList();
+  loadingEditor = false;
+  editorDirty = !!event.dirty;
+  setEditMode(editMode);
+}
+function renderDetails(event) {
+  const page = document.getElementById("page-details");
+  page.replaceChildren();
+  if (!event) {
+    const empty = document.createElement("p"); empty.className = "dialog-empty";
+    empty.textContent = "No event selected."; page.append(empty); return;
+  }
+  const title = document.createElement("h3");
+  title.textContent = (event.labels?.title || ["(untitled)"])[0];
+  const meta = document.createElement("div"); meta.className = "detail-value";
+  meta.textContent = `${fmtIndexTime(event)} · ${sourceDisplay(event.source)}`;
+  page.append(title, meta);
+  for (const [label, values] of Object.entries(event.labels || {})) {
+    if (!values.length) continue;
+    const labelNode = document.createElement("div"); labelNode.className = "detail-label"; labelNode.textContent = label;
+    const valueNode = document.createElement("div"); valueNode.className = "detail-value"; valueNode.textContent = values.join("\n");
+    page.append(labelNode, valueNode);
+  }
+}
+function markDirty() { if (!loadingEditor) editorDirty = true; }
+document.querySelectorAll("#page-form input, #page-form textarea").forEach(input =>
+  input.addEventListener("input", markDirty));
+async function collectEditorEvent() {
+  const source = document.getElementById("ed-source").value;
+  if (!source) throw new Error("Source is required.");
+  const timeText = document.getElementById("ed-time").value.trim();
+  if (!timeText) throw new Error("Time is required.");
+  const parsed = await api(`/api/parse_time?text=${encodeURIComponent(timeText)}`);
+  if (parsed.since == null) throw new Error(`Cannot parse time: ${timeText}`);
+  if (!document.getElementById("page-labels").classList.contains("active")) syncTableFromForm();
+  const labels = labelTableLabels();
+  const focus = document.querySelector("input[name=ed-focus]:checked").value;
+  if (focus === "location" && !labels.location?.length) throw new Error("Focus is Location but location is empty.");
+  if (focus === "people" && !labels.people?.length) throw new Error("Focus is People but people is empty.");
+  if (focus === "organization" && !labels.organization?.length) throw new Error("Focus is Organization but organization is empty.");
+  if (focus === "event" && !(labels.title?.length || labels.brief?.length || labels.event?.length))
+    throw new Error("Focus is Event but title/brief/event are all empty.");
+  return { uuid: selected?.uuid, source, since: parsed.since, until: parsed.until,
+    focus_label: focus, labels };
+}
+async function applyEditor() {
+  const error = document.getElementById("editor-error"); error.textContent = "";
+  try {
+    const payload = await collectEditorEvent();
+    const saved = await api("/api/events", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
+    });
+    await saveSource(saved.source);
+    editorDirty = false;
+    await reload(); await showEvent(saved.uuid); revealTime(saved.since);
+  } catch (error) { error.textContent = error.message; }
+}
+async function deleteEvent(uuid) {
+  const index = allEvents.find(event => event.uuid === uuid);
+  const event = selected?.uuid === uuid ? selected : index;
+  if (!event) return;
+  if (!confirm(`Delete '${index?.abstract || event.abstract || "(untitled)"}'?`)) return;
+  await api(`/api/events/${encodeURIComponent(uuid)}`, { method: "DELETE" });
+  await saveSource(event.source);
+  selected = null; editor.classList.remove("open"); resize();
+  await reload();
+}
+document.getElementById("ed-apply").onclick = applyEditor;
+document.getElementById("ed-edit").onclick = () => setEditMode(true);
+document.getElementById("ed-cancel").onclick = () => {
+  if (confirmDiscard()) loadEventIntoEditor(selected || { source: activeEditorSource(), labels: {}, focus_label: "event" }, false);
+};
+document.getElementById("ed-close").onclick = () => { if (confirmDiscard()) { editor.classList.remove("open"); resize(); } };
+document.getElementById("ed-new").onclick = () => openEditorForNew(activeEditorSource(), "");
+document.getElementById("ed-delete").onclick = () => selected && deleteEvent(selected.uuid);
+document.getElementById("ed-record").onchange = event => {
+  if (event.target.value && confirmDiscard()) showEvent(event.target.value, true);
+  else refreshRecordList();
+};
+document.getElementById("ed-source").onchange = () => {
+  if (!confirmDiscard()) return;
+  selected = null; refreshRecordList();
+  document.getElementById("ed-uuid").value = "(new)";
+  document.getElementById("editor-title").textContent = "New Event";
+};
+function confirmDiscard() {
+  if (!editorDirty || confirm("Discard unsaved changes?")) { editorDirty = false; return true; }
+  return false;
+}
+function openEditorForNew(source, presetTime = "") {
+  if (!source) { openFileDialog(); return; }
+  savedLockedValues = {};
+  for (const [id, label] of [["lock-time", "time"], ["lock-location", "location"],
+    ["lock-people", "people"], ["lock-organization", "organization"], ["lock-tags", "tags"]]) {
+    const value = document.getElementById(`ed-${label}`).value.trim();
+    if (document.getElementById(id).checked && value) savedLockedValues[label] = value;
+  }
+  const event = { uuid: "", source, since: null, until: null, focus_label: "event", labels: {}, dirty: true };
+  for (const [label, value] of Object.entries(savedLockedValues)) event.labels[label] = [value];
+  if (presetTime && !savedLockedValues.time) event.labels.time = [presetTime];
+  selected = null;
+  editor.classList.add("open"); resize();
+  loadEventIntoEditor(event, true);
 }
 
-document.getElementById("btn-files").onclick = () => {
-  fileDialog.classList.add("open");
-  refreshFiles();
+/* ---------- quick entry ---------------------------------------------------------- */
+function openQuickEntry(thread, timeText) {
+  if (!thread || thread.custom || !thread.source) { alert("Select a writable source thread first."); return; }
+  quickThread = thread;
+  document.getElementById("quick-target").textContent = `Target source: ${thread.source}`;
+  document.getElementById("quick-title").value = "";
+  document.getElementById("quick-time").value = timeText;
+  document.getElementById("quick-error").textContent = "";
+  openDialog("quick-dialog");
+}
+document.getElementById("quick-apply").onclick = async () => {
+  const error = document.getElementById("quick-error"); error.textContent = "";
+  try {
+    const title = document.getElementById("quick-title").value.trim();
+    if (!title) throw new Error("Title is required.");
+    const timeText = document.getElementById("quick-time").value.trim();
+    const parsed = await api(`/api/parse_time?text=${encodeURIComponent(timeText)}`);
+    if (parsed.since == null) throw new Error(`Cannot parse time: ${timeText}`);
+    const saved = await api("/api/events", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source: quickThread.source, since: parsed.since, until: parsed.until,
+        focus_label: "event", labels: { title: [title], time: [timeText] } })
+    });
+    closeDialog("quick-dialog");
+    await saveSource(quickThread.source);
+    await reload(); await showEvent(saved.uuid); revealTime(saved.since);
+  } catch (caught) { error.textContent = caught.message; }
 };
-document.getElementById("btn-files-close").onclick = closeFileDialog;
-fileDialog.onclick = (event) => {
-  if (event.target === fileDialog) closeFileDialog();
-};
-window.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && fileDialog.classList.contains("open"))
-    closeFileDialog();
-});
 
-/* ---------- toolbar / status / websocket ---------------------------------- */
-document.getElementById("btn-fit").onclick = () => {
+/* ---------- view helpers and websocket -------------------------------------------- */
+function fitToView() {
   const times = [];
-  for (const th of threads) for (const e of th.events)
-    if (e.since != null) times.push(usToJd(e.since),
-      usToJd(e.until ?? e.since));
+  for (const thread of threads) for (const event of thread.events)
+    if (event.since != null) { times.push(usToJd(event.since)); times.push(usToJd(event.until ?? event.since)); }
   if (!times.length) return;
   const lo = Math.min(...times), hi = Math.max(...times);
-  centerJd = (lo + hi) / 2;
-  const span = Math.max(hi - lo, 365);
-  pxPerDay = canvas.clientWidth * 0.9 / span;
-  layout(); draw();
-};
-document.getElementById("btn-reload").onclick = reload;
-function setStatus(s) { document.getElementById("status").textContent = s; }
-
+  viewState.centerJd = (lo + hi) / 2;
+  viewState.pxPerDay = axisLength() * 0.9 / Math.max(hi - lo, 365);
+  layout(); draw(); persist();
+}
+function toggleOrientation() {
+  viewState.orientation = viewState.orientation === "horizontal" ? "vertical" : "horizontal";
+  layout(); draw(); persist();
+}
+function revealTime(us) {
+  if (us == null) return;
+  const jd = usToJd(us), half = axisLength() / 2 / viewState.pxPerDay;
+  if (jd < viewState.centerJd - half || jd > viewState.centerJd + half) {
+    viewState.centerJd = jd; layout(); draw(); persist();
+  }
+}
+function setStatus(text) { document.getElementById("status").textContent = text; }
+function showTextDialog(title, text) {
+  document.getElementById("text-title").textContent = title;
+  document.getElementById("text-body").textContent = text;
+  openDialog("text-dialog");
+}
 function connectWs() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  const ws = new WebSocket(`${proto}://${location.host}/ws`);
-  ws.onopen = () => setStatus("live");
-  ws.onmessage = () => reload();          /* any change -> refetch */
-  ws.onclose = () => {
+  const socket = new WebSocket(`${proto}://${location.host}/ws`);
+  socket.onopen = () => setStatus("live");
+  socket.onmessage = () => reload().catch(error => setStatus(`reload failed: ${error.message}`));
+  socket.onclose = () => {
     setStatus("disconnected — retrying…");
     setTimeout(connectWs, 2000);
   };
 }
-
+window.addEventListener("resize", resize);
 resize();
-reload().catch(e => setStatus("load failed: " + e.message));
+reload().catch(error => setStatus(`load failed: ${error.message}`));
 connectWs();
 </script>
 </body>

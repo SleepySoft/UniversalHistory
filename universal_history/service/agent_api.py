@@ -20,8 +20,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from universal_history.adapters import (
+    FileFingerprints,
     HisFileAdapter,
     JsonFileAdapter,
+    SaveConflictError,
     event_from_dict,
     event_to_dict,
 )
@@ -78,6 +80,10 @@ class FileLoadOut(BaseModel):
     event_count: int
 
 
+class SourceSaveIn(BaseModel):
+    force: bool = False
+
+
 # ----------------------------------------------------------------------
 # WebSocket broadcast hub
 # ----------------------------------------------------------------------
@@ -115,6 +121,22 @@ def _index_to_dict(index) -> dict:
     }
 
 
+def _parse_label_query(text: Optional[str]) -> dict:
+    result = {}
+    for segment in (text or "").split(";"):
+        value = segment.strip()
+        if not value:
+            continue
+        colon = value.find(":")
+        if colon <= 0:
+            continue
+        label = value[:colon].strip()
+        tags = [tag.strip() for tag in value[colon + 1:].split(",") if tag.strip()]
+        if label and tags:
+            result[label] = tags
+    return result
+
+
 # ----------------------------------------------------------------------
 # App factory
 # ----------------------------------------------------------------------
@@ -126,6 +148,8 @@ def create_app(
     workspace = workspace or Workspace()
     file_library = file_library or AllowedFileLibrary()
     hub = BroadcastHub()
+    source_paths = {}
+    fingerprints = FileFingerprints()
 
     app = FastAPI(title="UniversalHistory Agent API", version="1.0")
     app.add_middleware(
@@ -164,13 +188,14 @@ def create_app(
                     "(year 0 = 1 BC); null = no time",
             "endpoints": [
                 "GET /api/sources",
-                "GET /api/events?source=&time_from=&time_to=",
+                "GET /api/events?source=&focus_label=&include_labels=&exclude_labels=&time_from=&time_to=",
                 "GET /api/events/{uuid}",
                 "GET /api/parse_time?text=",
                 "GET /api/files",
                 "POST /api/files/load",
                 "POST /api/events",
                 "DELETE /api/events/{uuid}",
+                "POST /api/sources/{source}/save",
                 "WS /ws (change notifications)",
             ],
         }
@@ -186,7 +211,9 @@ def create_app(
     def list_events(source: Optional[str] = None,
                     focus_label: Optional[str] = None,
                     time_from: Optional[int] = None,
-                    time_to: Optional[int] = None):
+                    time_to: Optional[int] = None,
+                    include_labels: Optional[str] = None,
+                    exclude_labels: Optional[str] = None):
         time_range = None
         if time_from is not None or time_to is not None:
             time_range = (
@@ -196,6 +223,10 @@ def create_app(
         events = workspace.select(
             sources=[source] if source else None,
             focus_label=focus_label,
+            include_labels=_parse_label_query(include_labels),
+            include_all=True,
+            exclude_labels=_parse_label_query(exclude_labels),
+            exclude_any=True,
             time_range=time_range,
         )
         return [_index_to_dict(e.to_index()) for e in events]
@@ -276,6 +307,10 @@ def create_app(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         file_library.mark_loaded(payload.file_id)
+        path = path.resolve()
+        fingerprints.remember(str(path))
+        for source in {event.source for event in events}:
+            source_paths[source] = path
         return {
             "file_id": payload.file_id,
             "sources": sorted({event.source for event in events}),
@@ -286,6 +321,36 @@ def create_app(
     def delete_event(event_uuid: str):
         if workspace.remove(event_uuid) is None:
             raise HTTPException(status_code=404, detail="event not found")
+
+    @app.post("/api/sources/{source:path}/save")
+    def save_source(source: str, payload: SourceSaveIn):
+        path = source_paths.get(source)
+        if path is None:
+            raise HTTPException(
+                status_code=404,
+                detail="source is not associated with a writable server file",
+            )
+        try:
+            sources = [s for s, mapped_path in source_paths.items() if mapped_path == path]
+            events = [event for mapped_source in sources for event in workspace.events(mapped_source)]
+            if not payload.force and fingerprints.has_conflict(str(path)):
+                raise SaveConflictError(
+                    f"File changed on disk since it was loaded: {path}"
+                )
+            if path.suffix.lower() == ".json":
+                JsonFileAdapter().save_file(
+                    str(path), events, force=payload.force
+                )
+            else:
+                HisFileAdapter().save_file(
+                    str(path), events, force=payload.force
+                )
+        except SaveConflictError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+        except (OSError, ValueError) as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        fingerprints.remember(str(path))
+        return {"source": source, "path": str(path), "event_count": len(events)}
 
     # ------------------------------------------------------------------
     # WebSocket
@@ -311,4 +376,6 @@ def create_app(
     app.state.workspace = workspace
     app.state.hub = hub
     app.state.file_library = file_library
+    app.state.source_paths = source_paths
+    app.state.file_fingerprints = fingerprints
     return app

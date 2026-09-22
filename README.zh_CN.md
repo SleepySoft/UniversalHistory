@@ -16,8 +16,8 @@
 - **持续事件悬停进度**：Tooltip 显示光标所在「Year N of M」。
 - **多国语言**：英文源文案全部经 `tr()` 包裹，JSON 翻译目录（`translations/zh_CN.json`）；`--lang` 参数或 `UH_LANGUAGE` 环境变量切换，默认跟随系统语言。
 - **JSON 持久化**：`JsonFileAdapter`（schema `universal-history/v1`），`since`/`until` 直接存 JDN 微秒整数。
-- **Agent API**：FastAPI REST + WebSocket 后端（`universal_history/service/`），提供 schema/sources/events 查询、自然语言时间解析、事件 upsert/删除，以及 Workspace 信号实时广播。
-- **Web 前端**：单文件 canvas 应用（`service/web/index.html`），复刻桌面端时间轴设计；JS 历法换算与 Python 端 `JDNTimestamp` 逐点对拍一致。
+- **Agent API**：FastAPI REST + WebSocket 后端（`universal_history/service/`），提供 schema/sources/events 查询、自然语言时间解析、事件 upsert/删除、带冲突检测的 source 保存，以及 Workspace 信号实时广播。
+- **Web 前端**：单文件 canvas 应用（`service/web/index.html`），提供菜单、富事件编辑器、Thread Manager、横纵方向切换、时间轴右键操作、快速录入和视图布局持久化；JS 历法换算与 Python 端 `JDNTimestamp` 逐点对拍一致。
 - **过滤器**：按 source、focus label、包含/排除标签和时间范围查询工作区；结果复用单独的过滤 Thread。
 
 ## 安装

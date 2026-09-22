@@ -33,14 +33,16 @@ built on a single proleptic-Gregorian JDN timestamp model.
   stores `since`/`until` as JDN microsecond integers.
 - **Agent API**: FastAPI REST + WebSocket backend
   (`universal_history/service/`) exposing schema/sources/events queries,
-  natural-language time parsing, event upsert/delete, and live Workspace
-  signal broadcast.
+  natural-language time parsing, event upsert/delete, source save with
+  conflict detection, and live Workspace signal broadcast.
 - **Server file panel**: the web `Files…` dialog lists `.his` / `.json`
   files exposed by `--allow-root`; loading uses opaque server-assigned file
   IDs and does not accept client-provided paths.
-- **Web frontend**: single-file canvas app (`service/web/index.html`)
-  mirroring the native timeline design; its JS calendar math is verified
-  point-for-point against the Python `JDNTimestamp`.
+- **Web frontend**: a desktop-parity, single-file canvas app
+  (`service/web/index.html`) with menus, a rich event editor, Thread Manager,
+  horizontal/vertical orientation, timeline context actions, quick entry, and
+  persisted view layout. Its JS calendar math is verified point-for-point
+  against the Python `JDNTimestamp`.
 - **Filter dialog**: query the workspace by source, focus label, included/excluded
   tags, and time range; results reuse a single filter thread.
 

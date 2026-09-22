@@ -30,16 +30,21 @@ else:
     _WEB_DIR = Path(__file__).resolve().parent / "web"
 
 
-def build_workspace(paths: list[str]) -> Workspace:
+def build_workspace(paths: list[str]) -> tuple[Workspace, dict[str, Path]]:
     workspace = Workspace()
     his = HisFileAdapter()
     js = JsonFileAdapter()
+    source_paths = {}
     for p in paths:
         if p.endswith(".json"):
-            workspace.load_events(js.load_file(p))
+            events = js.load_file(p)
         else:
-            workspace.load_events(his.load_file(p))
-    return workspace
+            events = his.load_file(p)
+        workspace.load_events(events)
+        resolved = Path(p).resolve()
+        for source in {event.source for event in events}:
+            source_paths[source] = resolved
+    return workspace, source_paths
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -56,13 +61,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    workspace = build_workspace(list(args.files))
+    workspace, source_paths = build_workspace(list(args.files))
     allowed_roots = [Path(path) for path in args.allow_root]
     allowed_roots.extend(Path(path) for path in args.files)
     file_library = AllowedFileLibrary(allowed_roots)
     for path in args.files:
         file_library.mark_loaded_path(path)
     app = create_app(workspace, file_library=file_library)
+    app.state.source_paths.update(source_paths)
+    for path in source_paths.values():
+        app.state.file_fingerprints.remember(str(path))
     if _WEB_DIR.is_dir():
         app.mount("/", StaticFiles(directory=str(_WEB_DIR), html=True),
                   name="web")
