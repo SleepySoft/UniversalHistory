@@ -19,10 +19,16 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from universal_history.adapters import event_from_dict, event_to_dict
+from universal_history.adapters import (
+    HisFileAdapter,
+    JsonFileAdapter,
+    event_from_dict,
+    event_to_dict,
+)
 from universal_history.chrono.jdn_timestamp import JDNTimestamp
 from universal_history.chrono.time_utils import parse_time_text
 from universal_history.models import Event, Workspace
+from universal_history.service.file_library import AllowedFileLibrary
 
 
 # ----------------------------------------------------------------------
@@ -59,6 +65,16 @@ class IndexOut(BaseModel):
 
 class SourceOut(BaseModel):
     source: str
+    event_count: int
+
+
+class FileLoadIn(BaseModel):
+    file_id: str
+
+
+class FileLoadOut(BaseModel):
+    file_id: str
+    sources: List[str]
     event_count: int
 
 
@@ -103,8 +119,12 @@ def _index_to_dict(index) -> dict:
 # App factory
 # ----------------------------------------------------------------------
 
-def create_app(workspace: Optional[Workspace] = None) -> FastAPI:
+def create_app(
+    workspace: Optional[Workspace] = None,
+    file_library: Optional[AllowedFileLibrary] = None,
+) -> FastAPI:
     workspace = workspace or Workspace()
+    file_library = file_library or AllowedFileLibrary()
     hub = BroadcastHub()
 
     app = FastAPI(title="UniversalHistory Agent API", version="1.0")
@@ -147,6 +167,8 @@ def create_app(workspace: Optional[Workspace] = None) -> FastAPI:
                 "GET /api/events?source=&time_from=&time_to=",
                 "GET /api/events/{uuid}",
                 "GET /api/parse_time?text=",
+                "GET /api/files",
+                "POST /api/files/load",
                 "POST /api/events",
                 "DELETE /api/events/{uuid}",
                 "WS /ws (change notifications)",
@@ -213,6 +235,53 @@ def create_app(workspace: Optional[Workspace] = None) -> FastAPI:
             raise HTTPException(status_code=400, detail=str(e))
         return event_to_dict(event)
 
+    @app.get("/api/files")
+    def list_files():
+        files = file_library.list_files()
+        loaded_ids = file_library.loaded_ids()
+        return {
+            "roots": [str(root) for root in file_library.roots],
+            "files": [
+                {
+                    "id": item.id,
+                    "name": item.name,
+                    "path": item.relative_path,
+                    "format": item.file_format,
+                    "size_bytes": item.size_bytes,
+                    "loaded": item.id in loaded_ids,
+                }
+                for item in files
+            ],
+        }
+
+    @app.post("/api/files/load", response_model=FileLoadOut)
+    def load_file(payload: FileLoadIn):
+        try:
+            path = file_library.resolve(payload.file_id)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="allowed file not found")
+        except (OSError, ValueError) as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+        try:
+            if path.suffix.lower() == ".json":
+                events = JsonFileAdapter().load_file(str(path))
+            else:
+                events = HisFileAdapter().load_file(str(path))
+        except (OSError, ValueError) as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+        try:
+            workspace.load_events(events)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        file_library.mark_loaded(payload.file_id)
+        return {
+            "file_id": payload.file_id,
+            "sources": sorted({event.source for event in events}),
+            "event_count": len(events),
+        }
+
     @app.delete("/api/events/{event_uuid}", status_code=204)
     def delete_event(event_uuid: str):
         if workspace.remove(event_uuid) is None:
@@ -241,4 +310,5 @@ def create_app(workspace: Optional[Workspace] = None) -> FastAPI:
 
     app.state.workspace = workspace
     app.state.hub = hub
+    app.state.file_library = file_library
     return app

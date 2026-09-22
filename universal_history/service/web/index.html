@@ -50,6 +50,34 @@
              color: #fff; padding: 6px 9px; border-radius: 4px; font-size: 12px;
              white-space: pre-line; display: none; z-index: 10; max-width: 320px; }
   #err { color: #b91c1c; font-size: 12px; min-height: 16px; }
+  .dialog-overlay { position: fixed; inset: 0; display: none;
+                    align-items: center; justify-content: center;
+                    background: rgba(20,20,25,.45); z-index: 20; }
+  .dialog-overlay.open { display: flex; }
+  .dialog { width: min(680px, calc(100vw - 32px));
+            max-height: min(640px, calc(100vh - 32px));
+            display: flex; flex-direction: column; background: var(--panel);
+            border-radius: 8px; box-shadow: 0 18px 48px rgba(0,0,0,.24); }
+  .dialog-header { display: flex; align-items: center; justify-content: space-between;
+                   padding: 14px 16px 8px; }
+  .dialog-header h3 { margin: 0; }
+  .dialog-hint { margin: 0 16px 12px; color: #666; font-size: 12px; }
+  .dialog-error { margin: 0 16px 10px; color: #b91c1c; font-size: 12px;
+                  min-height: 16px; }
+  .dialog-body { margin: 0 12px 12px; overflow-y: auto; padding: 0 4px; }
+  .file-item { display: flex; align-items: center; gap: 12px;
+               padding: 10px 8px; border-bottom: 1px solid #f0f0f2; }
+  .file-item:last-child { border-bottom: 0; }
+  .file-details { min-width: 0; flex: 1; }
+  .file-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis;
+               white-space: nowrap; }
+  .file-path { color: #777; font-size: 12px; overflow: hidden;
+               text-overflow: ellipsis; white-space: nowrap; }
+  .file-meta { color: #8b8b92; font-size: 11px; margin-top: 3px; }
+  .loaded-badge { background: #eaf7ef; color: #18794e; border-radius: 999px;
+                  font-size: 11px; padding: 2px 8px; }
+  .dialog-empty { color: #777; padding: 22px 8px; text-align: center; }
+  .file-load-button { min-width: 82px; }
 </style>
 </head>
 <body>
@@ -58,6 +86,7 @@
     <div id="toolbar">
       <button id="btn-fit">Fit to View</button>
       <button id="btn-reload">Reload</button>
+      <button id="btn-files">Files…</button>
       <span id="status">connecting…</span>
     </div>
     <canvas id="canvas"></canvas>
@@ -83,6 +112,20 @@
   </div>
 </div>
 <div id="tooltip"></div>
+<div id="file-dialog" class="dialog-overlay" role="dialog" aria-modal="true"
+     aria-labelledby="file-dialog-title">
+  <div class="dialog">
+    <div class="dialog-header">
+      <h3 id="file-dialog-title">Server Files</h3>
+      <button id="btn-files-close" class="btn-plain">Close</button>
+    </div>
+    <p class="dialog-hint">
+      Only files made available by the server are listed.
+    </p>
+    <div id="file-dialog-error" class="dialog-error"></div>
+    <div id="file-list" class="dialog-body"></div>
+  </div>
+</div>
 <script>
 "use strict";
 /* ====================================================================
@@ -599,6 +642,116 @@ async function showQuickCreate(timeText) {
       labels: { title: [title], time: [timeText] },
     }) });
 }
+
+/* ---------- server file panel -------------------------------------------- */
+const fileDialog = document.getElementById("file-dialog");
+const fileList = document.getElementById("file-list");
+const fileDialogError = document.getElementById("file-dialog-error");
+
+function formatFileSize(sizeBytes) {
+  if (sizeBytes < 1024) return `${sizeBytes} B`;
+  if (sizeBytes < 1024 * 1024) return `${(sizeBytes / 1024).toFixed(1)} KB`;
+  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function makeFileItem(file) {
+  const item = document.createElement("div");
+  item.className = "file-item";
+
+  const details = document.createElement("div");
+  details.className = "file-details";
+
+  const name = document.createElement("div");
+  name.className = "file-name";
+  name.textContent = file.name;
+
+  const path = document.createElement("div");
+  path.className = "file-path";
+  path.textContent = file.path;
+
+  const meta = document.createElement("div");
+  meta.className = "file-meta";
+  meta.textContent =
+    `${file.format.toUpperCase()} · ${formatFileSize(file.size_bytes)}`;
+
+  const action = document.createElement("button");
+  action.className = "file-load-button";
+  action.textContent = file.loaded ? "Reload" : "Load";
+  action.onclick = async () => {
+    action.disabled = true;
+    action.textContent = "Loading…";
+    fileDialogError.textContent = "";
+    try {
+      const result = await api("/api/files/load", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file_id: file.id }),
+      });
+      file.loaded = true;
+      action.textContent = "Reload";
+      await reload();
+      setStatus(`Loaded ${result.event_count} events from ${file.name}`);
+    } catch (e) {
+      fileDialogError.textContent = e.message;
+      action.textContent = file.loaded ? "Reload" : "Load";
+    } finally {
+      action.disabled = false;
+    }
+  };
+
+  if (file.loaded) {
+    const badge = document.createElement("span");
+    badge.className = "loaded-badge";
+    badge.textContent = "Loaded";
+    details.append(name, path, meta);
+    item.append(details, badge, action);
+  } else {
+    details.append(name, path, meta);
+    item.append(details, action);
+  }
+  return item;
+}
+
+async function refreshFiles() {
+  fileDialogError.textContent = "";
+  fileList.replaceChildren();
+  const empty = document.createElement("div");
+  empty.className = "dialog-empty";
+  empty.textContent = "Loading…";
+  fileList.append(empty);
+  try {
+    const catalog = await api("/api/files");
+    fileList.replaceChildren();
+    if (!catalog.files.length) {
+      empty.textContent =
+        "No server files are available. Start the server with --allow-root.";
+      fileList.append(empty);
+      return;
+    }
+    for (const file of catalog.files) fileList.append(makeFileItem(file));
+  } catch (e) {
+    fileDialogError.textContent = e.message;
+    empty.textContent = "Unable to load the file list.";
+    fileList.append(empty);
+  }
+}
+
+function closeFileDialog() {
+  fileDialog.classList.remove("open");
+}
+
+document.getElementById("btn-files").onclick = () => {
+  fileDialog.classList.add("open");
+  refreshFiles();
+};
+document.getElementById("btn-files-close").onclick = closeFileDialog;
+fileDialog.onclick = (event) => {
+  if (event.target === fileDialog) closeFileDialog();
+};
+window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && fileDialog.classList.contains("open"))
+    closeFileDialog();
+});
 
 /* ---------- toolbar / status / websocket ---------------------------------- */
 document.getElementById("btn-fit").onclick = () => {

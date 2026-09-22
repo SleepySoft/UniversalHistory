@@ -35,6 +35,9 @@ built on a single proleptic-Gregorian JDN timestamp model.
   (`universal_history/service/`) exposing schema/sources/events queries,
   natural-language time parsing, event upsert/delete, and live Workspace
   signal broadcast.
+- **Server file panel**: the web `Files…` dialog lists `.his` / `.json`
+  files exposed by `--allow-root`; loading uses opaque server-assigned file
+  IDs and does not accept client-provided paths.
 - **Web frontend**: single-file canvas app (`service/web/index.html`)
   mirroring the native timeline design; its JS calendar math is verified
   point-for-point against the Python `JDNTimestamp`.
@@ -70,7 +73,8 @@ universal-history
 Agent API + web frontend server:
 
 ```bash
-python -m universal_history.service [--host 127.0.0.1] [--port 8000] [file1.his file2.json ...]
+python -m universal_history.service [--host 127.0.0.1] [--port 8000]
+                                   [--allow-root PATH] [file1.his file2.json ...]
 universal-history-server ../History/depot/example/example.his   # after install
 ```
 

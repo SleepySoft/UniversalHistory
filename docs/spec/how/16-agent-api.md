@@ -6,7 +6,8 @@
 ## 1. 服务端（service/__main__.py）
 
 ```bash
-python -m universal_history.service [--host 127.0.0.1] [--port 8000] [file1.his file2.json ...]
+python -m universal_history.service [--host 127.0.0.1] [--port 8000]
+                                   [--allow-root PATH] [file1.his file2.json ...]
 ```
 
 - 命令行文件按扩展名分流：`.json` 走 `JsonFileAdapter`，其余走 `HisFileAdapter`，全部加载进**一个共享 Workspace**；
@@ -22,6 +23,8 @@ python -m universal_history.service [--host 127.0.0.1] [--port 8000] [file1.his 
 | GET | `/api/events` | 查询；参数 `source`、`focus_label`、`time_from`、`time_to`（JDN µs）；返回 **index 形**（摘要 + 指针，见 `04-models.md` §2） |
 | GET | `/api/events/{uuid}` | 单个事件全量字段 |
 | GET | `/api/parse_time?text=` | 自然语言时间 → JDNTimestamp µs（复用桌面端解析器） |
+| GET | `/api/files` | 列出 `--allow-root` 暴露的 `.his` / `.json` 文件（返回 opaque file id） |
+| POST | `/api/files/load` | 按 opaque file id 加载允许文件；不接受客户端路径 |
 | POST | `/api/events` | upsert 事件（body 为事件 JSON） |
 | DELETE | `/api/events/{uuid}` | 删除事件 |
 | WS | `/ws` | 广播全部 Workspace 信号（event_added/updated/removed、source_loaded/removed），供 Agent 与 Web 前端实时同步 |
@@ -33,6 +36,7 @@ python -m universal_history.service [--host 127.0.0.1] [--port 8000] [file1.his 
 - 单文件 canvas 应用，**复刻桌面端时间轴设计**：Thread 布局、平移/缩放、悬停提示、LOD 刻度；
 - 历法换算（含 BCE 天文纪年、1582 切换、闰日）由 JS 重实现，已用 Node 与 Python 端 `JDNTimestamp` 逐点对拍一致；
 - 数据全部经 §2 的 REST/WS 契约，不直接读文件。
+- 工具栏 `Files…` 面板可浏览/加载服务端允许文件。
 
 ## 4. 边界
 

@@ -21,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from universal_history.adapters import HisFileAdapter, JsonFileAdapter
 from universal_history.models import Workspace
 from universal_history.service.agent_api import create_app
+from universal_history.service.file_library import AllowedFileLibrary
 
 if getattr(sys, "frozen", False):
     # PyInstaller bundle: data files live under sys._MEIPASS (the _internal dir).
@@ -46,10 +47,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("files", nargs="*", help=".his / .uh.json files to load")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument(
+        "--allow-root",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help="Server file or directory exposed to the web file panel",
+    )
     args = parser.parse_args(argv)
 
     workspace = build_workspace(list(args.files))
-    app = create_app(workspace)
+    allowed_roots = [Path(path) for path in args.allow_root]
+    allowed_roots.extend(Path(path) for path in args.files)
+    file_library = AllowedFileLibrary(allowed_roots)
+    for path in args.files:
+        file_library.mark_loaded_path(path)
+    app = create_app(workspace, file_library=file_library)
     if _WEB_DIR.is_dir():
         app.mount("/", StaticFiles(directory=str(_WEB_DIR), html=True),
                   name="web")
